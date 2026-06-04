@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Patua+One&family=JetBrains+Mono:wght@400;500&display=swap');
+
+body {
+  background-color: #FFFFFF;
+  color: #000000;
+  font-family: 'Manrope', sans-serif;
+}
+
+::selection {
+  background-color: #000000;
+  color: #FFFFFF;
+}
+
+::-moz-selection {
+  background-color: #000000;
+  color: #FFFFFF;
+}
+
+/* Noise texture overlay */
+.noise-overlay {
+  position: relative;
+}
+
+.noise-overlay::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.015;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    #000 1px,
+    #000 2px
+  );
+  background-size: 100% 4px;
+  z-index: 0;
+}

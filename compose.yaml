@@ -1,0 +1,36 @@
+services:
+  bind9:
+    image: internetsystemsconsortium/bind9:9.18
+    container_name: bind9
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+    volumes:
+      - ./bind/config:/etc/bind:ro
+    networks:
+      - dns-network
+
+  bind-gui:
+    build:
+      context: ./bind-gui
+      dockerfile: Dockerfile
+    container_name: bind9-gui
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - AUTH_SECRET=${AUTH_SECRET:-change-me-production}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-password}
+      - CONFIG_DIR=/app/bind/config
+    volumes:
+      - ../bind/config:/app/bind/config:rw
+    depends_on:
+      - bind9
+    networks:
+      - dns-network
+
+networks:
+  dns-network:
+    driver: bridge
