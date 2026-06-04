@@ -48,7 +48,7 @@ A minimalist, monochrome web interface to edit BIND DNS configuration files with
 Run both BIND9 and GUI together:
 
 ```bash
-docker compose -f compose.full.yaml up --build
+docker compose -f compose.yaml up --build
 ```
 
 Access the GUI at http://localhost:3001
