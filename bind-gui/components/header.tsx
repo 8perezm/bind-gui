@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 import { Button } from "@/components/ui/button";
+import VersionDisplay from "@/components/version-display";
 
 export default function Header() {
     const { data: session } = useSession();
@@ -17,6 +18,7 @@ export default function Header() {
                     <span className="text-mutedForeground font-mono text-sm tracking-widest uppercase opacity-0 group-hover:opacity-100 transition-opacity duration-INSTANT">
                         Editor
                     </span>
+                    <VersionDisplay />
                 </Link>
 
                 {session && (

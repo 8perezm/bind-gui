@@ -10,6 +10,70 @@ A minimalist, monochrome web interface to edit BIND DNS configuration files with
 - **Authentication**: Secure login with username/password from `.env`
 - **Docker Support**: Full Docker Compose integration with BIND9
 
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH).
+
+### Version Display
+
+The current version is displayed in the header of the web interface and can be accessed programmatically via the API:
+
+```bash
+curl http://localhost:3001/api/version
+```
+
+### Releasing a New Version
+
+#### Option 1: Automatic (GitHub Actions - Recommended)
+
+Use the **Version Bump** workflow in GitHub Actions:
+
+1. Go to your repository on GitHub
+2. Navigate to **Actions** → **Version Bump**
+3. Click **Run workflow**
+4. Select the bump type (patch/minor/major)
+5. Click **Run workflow**
+
+This will automatically:
+- Update the version in `bind-gui/package.json`
+- Commit the change to main
+- Create and push a git tag (e.g., `v0.1.1`)
+- Trigger the Docker image build with proper version tags
+
+#### Option 2: Manual (Local Script)
+
+Use the provided script to bump the version and create a git tag:
+
+```bash
+# Patch version bump (0.1.0 -> 0.1.1)
+./scripts/version-bump.sh patch
+
+# Minor version bump (0.1.0 -> 0.2.0)
+./scripts/version-bump.sh minor
+
+# Major version bump (0.1.0 -> 1.0.0)
+./scripts/version-bump.sh major
+```
+
+This will:
+1. Update the version in `bind-gui/package.json`
+2. Create a git commit with the version change
+3. Create a git tag (e.g., `v0.1.1`)
+
+After running the script, push the changes and tags:
+
+```bash
+git push origin main --tags
+```
+
+### Docker Images
+
+Docker images are automatically built and tagged when you push to main or create a version tag. The images are tagged as:
+- `latest` (for main branch)
+- `v1.2.3` (full semantic version from git tag)
+- `1.2` (major.minor from git tag)
+- Short SHA (for main branch commits)
+
 ## Quick Start
 
 ### Prerequisites
