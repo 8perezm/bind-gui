@@ -1,6 +1,8 @@
 services:
   bind-gui:
-    image: migsperez/bind-dns-gui:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: bind9-gui
     restart: unless-stopped
     ports:
@@ -12,11 +14,4 @@ services:
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - CONFIG_DIR=/app/bind/config
     volumes:
-      - ./config:/app/bind/config:rw
-    networks:
-      - dns-network
-
-networks:
-  dns-network:
-    external: true
-    name: bind-dns-network
+      - ../bind/config:/app/bind/config:rw

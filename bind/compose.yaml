@@ -1,0 +1,24 @@
+services:
+  bind9:
+    image: internetsystemsconsortium/bind9:9.18
+    container_name: internal-dns
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      # RNDC control port
+      # - "127.0.0.1:953:953/tcp"
+    volumes:
+      - ./config:/etc/bind:ro # Read-only for config
+      - bind-cache:/var/cache/bind # Writable cache directory for BIND
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 53 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  bind-cache:
