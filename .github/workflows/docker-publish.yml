@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./bind-gui
-          file: Dockerfile
+          file: ./bind-gui/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
