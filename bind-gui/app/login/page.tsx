@@ -28,13 +28,14 @@ export default function LoginPage() {
             });
 
             if (result?.ok) {
-                router.push("/");
+                // Use window.location for a full page refresh to ensure session is picked up
+                window.location.href = "/";
             } else {
                 setError(result?.error || "Invalid credentials");
+                setLoading(false);
             }
         } catch {
             setError("An error occurred. Please try again.");
-        } finally {
             setLoading(false);
         }
     }

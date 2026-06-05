@@ -1,8 +1,19 @@
 import CredentialsProvider from "next-auth/providers/credentials";
 import type { NextAuthOptions } from "next-auth";
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "password";
+// Validate required environment variables at startup
+if (!process.env.ADMIN_USERNAME) {
+    throw new Error("ADMIN_USERNAME environment variable is required");
+}
+if (!process.env.ADMIN_PASSWORD) {
+    throw new Error("ADMIN_PASSWORD environment variable is required");
+}
+if (!process.env.AUTH_SECRET) {
+    throw new Error("AUTH_SECRET environment variable is required. Generate one with: openssl rand -base64 32");
+}
+
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
 export const authOptions: NextAuthOptions = {
     providers: [
