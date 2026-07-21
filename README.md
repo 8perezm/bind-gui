@@ -20,6 +20,10 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/-MIT-000000?style=flat-square" alt="License"></a>
 </p>
 
+<p align="center">
+  <img src="screenshot-1.png" alt="Bind DNS GUI Screenshot" width="800">
+</p>
+
 ---
 
 ## ✨ Features
