@@ -9,7 +9,7 @@ import {
     setInlineSigningInNamedConfLocal,
 } from "@/lib/fileSystem";
 import { parseZoneFile, generateZoneFile } from "@/lib/dnsParser";
-import { addZone, reconfig, RndcError } from "@/lib/rndc";
+import { addZone, reconfig, zoneStatus, RndcError } from "@/lib/rndc";
 
 export async function GET() {
     const zoneFilenames = listZoneFiles();
@@ -37,12 +37,20 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { domain, primaryNs, adminEmail, ttl, inlineSigning } = body as {
+        const {
+            domain,
+            primaryNs,
+            adminEmail,
+            ttl,
+            inlineSigning,
+            nameserverIp,
+        } = body as {
             domain: string;
             primaryNs?: string;
             adminEmail?: string;
             ttl?: number;
             inlineSigning?: boolean;
+            nameserverIp?: string;
         };
 
         if (!domain || typeof domain !== "string") {
@@ -60,6 +68,23 @@ export async function POST(request: Request) {
             );
         }
 
+        // Validate nameserver IP if provided (a glue A record is only
+        // useful when the IP is syntactically valid).
+        if (nameserverIp !== undefined && nameserverIp !== null && nameserverIp !== "") {
+            if (
+                !/^(\d{1,3}\.){3}\d{1,3}$/.test(nameserverIp) ||
+                !nameserverIp.split(".").every((o) => {
+                    const n = parseInt(o, 10);
+                    return n >= 0 && n <= 255;
+                })
+            ) {
+                return NextResponse.json(
+                    { error: "Nameserver IP must be a valid IPv4 address (e.g. 192.0.2.1)." },
+                    { status: 400 }
+                );
+            }
+        }
+
         const filename = `db.${domain}`;
 
         // Check for duplicate
@@ -71,12 +96,54 @@ export async function POST(request: Request) {
             );
         }
 
-        // Generate zone file content with SOA block
+        const soaPrimaryNs = primaryNs || `ns1.${domain}.`;
+        const soaAdminEmail = adminEmail || `admin.${domain}.`;
+
+        // If a glue IP was provided, the nameserver is in-bailiwick and
+        // we need an A record for it in the generated zone file. BIND
+        // refuses to load a zone whose in-bailiwick NS has no address
+        // records, so without this glue the new zone would be silently
+        // dropped by `rndc reconfig` and the user would see a 201
+        // success but `rndc zonestatus` would say "not loaded".
+        const extraRecords: { name: string; type: "A" | "AAAA"; ttl: number; data: string }[] = [];
+        if (nameserverIp) {
+            // The NS name in the zone block is `soaPrimaryNs`, e.g.
+            // `ns1.example.com.`. Inside the zone (which has apex
+            // `example.com.`), the owner name is the leading label(s)
+            // that aren't part of the zone apex — just `ns1` in the
+            // common case. We strip the trailing dot and the zone
+            // suffix (without its dot) to compute the owner name.
+            const nsLabel = soaPrimaryNs.endsWith(".")
+                ? soaPrimaryNs.slice(0, -1)
+                : soaPrimaryNs;
+            const apex = domain; // apex has no trailing dot
+            let ownerName: string;
+            if (nsLabel === apex) {
+                ownerName = "@";
+            } else if (nsLabel.endsWith(`.${apex}`)) {
+                ownerName = nsLabel.slice(0, -(`.${apex}`).length);
+            } else {
+                // External NS — no glue needed. We still emit the A
+                // record at the FQDN, which BIND accepts, but it
+                // won't be useful until the parent zone has a
+                // matching delegation.
+                ownerName = nsLabel;
+            }
+            extraRecords.push({
+                name: ownerName,
+                type: "A",
+                ttl: ttl ?? 86400,
+                data: nameserverIp,
+            });
+        }
+
+        // Generate zone file content with SOA block + NS apex + optional glue.
         const content = generateZoneFile({
             domain,
-            soaPrimaryNs: primaryNs || `ns1.${domain}.`,
-            soaAdminEmail: adminEmail || `admin.${domain}.`,
+            soaPrimaryNs,
+            soaAdminEmail,
             ttl: ttl ?? 86400,
+            records: extraRecords,
         });
 
         // Create the file on disk
@@ -145,6 +212,35 @@ export async function POST(request: Request) {
                 {
                     error: "BIND would not load the new zone. The zone was not created. Ensure rndc can reach BIND and the controls block in named.conf allows this host.",
                     detail: lastError,
+                },
+                { status: 500 }
+            );
+        }
+
+        // `reconfig` and `addzone` both report "success" even if BIND
+        // silently dropped the new zone due to a load error (e.g. an
+        // in-bailiwick NS without glue). Verify the zone is actually
+        // loaded before we tell the user "201 Created" — otherwise the
+        // zone would appear in the GUI's list but `rndc zonestatus`
+        // would say "not loaded", which is the silent-failure mode that
+        // caught the user out before this fix.
+        try {
+            await zoneStatus(domain);
+        } catch (statusErr) {
+            // Roll back so the user is not left with an orphan that
+            // can't be removed via the GUI.
+            unregisterZoneFromNamedConfLocal(domain);
+            deleteZoneFile(filename);
+            const stderr =
+                statusErr instanceof RndcError
+                    ? statusErr.stderr || statusErr.message
+                    : statusErr instanceof Error
+                        ? statusErr.message
+                        : String(statusErr);
+            return NextResponse.json(
+                {
+                    error: `BIND accepted the zone registration but did not load the zone. The most common cause is an in-bailiwick NS without an A/AAAA glue record — provide a nameserver IP in the create dialog. (${stderr})`,
+                    detail: stderr,
                 },
                 { status: 500 }
             );

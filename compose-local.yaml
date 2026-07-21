@@ -1,0 +1,56 @@
+services:
+  # ── BIND9 DNS Server ──────────────────────────────────────────────
+  bind9:
+    image: internetsystemsconsortium/bind9:9.20
+    container_name: bind9
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "953:953/tcp"
+    volumes:
+      - ./bind/config:/etc/bind:rw
+      - bind-cache:/var/cache/bind
+    environment:
+      - TZ=UTC
+    networks:
+      - dns-net
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 53 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ── Bind DNS GUI ──────────────────────────────────────────────────
+  bind-gui:
+    build: ./bind-gui
+    container_name: bind9-gui
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - AUTH_SECRET=${AUTH_SECRET:?Set AUTH_SECRET in .env}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
+      - CONFIG_DIR=/app/bind/config
+      - BIND_RNDC_HOST=bind9
+      - BIND_DNS_HOST=bind9
+      - TSIG_KEY_FILE=/etc/bind/bind-gui.key
+    volumes:
+      - ./bind/config:/app/bind/config:rw
+      - ./bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      bind9:
+        condition: service_started
+    networks:
+      - dns-net
+
+networks:
+  dns-net:
+    driver: bridge
+
+volumes:
+  bind-cache:

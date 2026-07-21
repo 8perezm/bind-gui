@@ -210,6 +210,11 @@ function formatRecord(record: DnsRecord): string {
     return `${padRight(record.name, 8)} IN      ${padRight(record.type, 6)}${record.data}${comment}`;
 }
 
+/** Generate a stable id for a freshly-constructed record. */
+function makeRecordId(name: string, type: string): string {
+    return `${name}-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function padRight(str: string, len: number): string {
     while (str.length < len) str += " ";
     return str;
@@ -224,7 +229,12 @@ export interface NewZoneOptions {
     retry?: number;
     expire?: number;
     minimumTtl?: number;
-    records?: DnsRecord[];
+    /**
+     * Initial records to seed the zone with. `id` is generated
+     * server-side; callers don't need to provide one. `comment` is
+     * optional and defaults to none.
+     */
+    records?: Array<Omit<DnsRecord, "id"> & { id?: string }>;
 }
 
 /** Generate serial number in YYYYMMDDNN format */
@@ -271,13 +281,23 @@ export function generateZoneFile(options: NewZoneOptions): string {
     // the user must also add a glue A record via the record editor,
     // otherwise BIND's strict checks will still reject the zone with
     // "NS has no address records".
-    const nsRecords = records.filter((r) => r.type === "NS");
-    const aRecords = records.filter((r) => r.type === "A");
-    const cnameRecords = records.filter((r) => r.type === "CNAME");
-    const mxRecords = records.filter((r) => r.type === "MX");
-    const txtRecords = records.filter((r) => r.type === "TXT");
-    const ptrRecords = records.filter((r) => r.type === "PTR");
-    const otherRecords = records.filter(
+    //
+    // Normalise the caller-provided records so each has a stable `id`
+    // (the DnsRecord type requires one for downstream consumers like
+    // formatRecord). The frontend uses (name|type|data) as a composite
+    // identity so the random id here never causes a duplicate detection
+    // mismatch.
+    const withIds: DnsRecord[] = records.map((r) => ({
+        ...r,
+        id: r.id ?? makeRecordId(r.name, r.type),
+    }));
+    const nsRecords = withIds.filter((r) => r.type === "NS");
+    const aRecords = withIds.filter((r) => r.type === "A");
+    const cnameRecords = withIds.filter((r) => r.type === "CNAME");
+    const mxRecords = withIds.filter((r) => r.type === "MX");
+    const txtRecords = withIds.filter((r) => r.type === "TXT");
+    const ptrRecords = withIds.filter((r) => r.type === "PTR");
+    const otherRecords = withIds.filter(
         (r) => !["NS", "A", "CNAME", "MX", "TXT", "PTR"].includes(r.type)
     );
 

@@ -34,6 +34,12 @@ options {
     };
     forward only;
 
+    // ── Runtime Zone Management ──────────────────────────────────────
+    // Required for `rndc addzone` / `rndc delzone` — the Bind DNS GUI
+    // uses these commands when creating zones and toggling DNSSEC
+    // inline-signing. Without this, named rejects addzone with "failure".
+    allow-new-zones yes;
+
     // ── DNSSEC ───────────────────────────────────────────────────────
     // Disabled by default for simplicity. Enable in production if
     // your domains support DNSSEC.

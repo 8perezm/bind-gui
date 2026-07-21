@@ -135,18 +135,18 @@ export function unregisterZoneFromNamedConfLocal(domain: string): boolean {
         return true;
     }
 
-    // Match the entire zone block for this domain and remove it along with surrounding blank lines
-    const zoneBlockRegex = new RegExp(
-        `\\n?\\s*\\n?\\s*zone\\s+"${escapeRegExp(domain)}"\\s*{[^}]*}\\s*;\\s*`,
-        "g"
-    );
-    let updatedContent = rawContent.replace(zoneBlockRegex, "");
-
-    // Trim trailing whitespace and re-add single newline
-    updatedContent = updatedContent.trimEnd() + "\n";
-
-    if (updatedContent === rawContent.trimEnd() + "\n") {
+    const block = findZoneBlock(rawContent, domain);
+    if (!block) {
         console.log(`Zone "${domain}" not found in ${NAMED_CONF_LOCAL}, skipping removal.`);
+        return true;
+    }
+
+    // Drop the block plus the surrounding blank line(s).
+    const { start, end } = blockWithSurroundingWhitespace(rawContent, block);
+    const updatedContent =
+        rawContent.slice(0, start) + rawContent.slice(end).replace(/^\n+/, "");
+
+    if (updatedContent === rawContent) {
         return true;
     }
 
@@ -155,6 +155,120 @@ export function unregisterZoneFromNamedConfLocal(domain: string): boolean {
 
 function escapeRegExp(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Locate a `zone "X" { ... }` block in named.conf.local, returning the
+ * exact character spans of the open brace, the body (everything between
+ * the braces), and the close brace. Handles nested braces correctly
+ * (e.g. `allow-update { key "..."; }` inside the zone block) — a
+ * previous implementation used `[^}]*` which silently stopped at the
+ * first inner `}` and corrupted the file on every call.
+ *
+ * Returns null if the domain is not present in the file.
+ */
+function findZoneBlock(
+    content: string,
+    domain: string
+): { start: number; openEnd: number; closeStart: number; end: number; open: string; body: string; close: string } | null {
+    // Find the start of `zone "X" {` — `start` points at the `z` of `zone`.
+    const startRegex = new RegExp(`(^|\\n)[ \\t]*zone[ \\t]+"${escapeRegExp(domain)}"[ \\t]*\\{`);
+    const startMatch = startRegex.exec(content);
+    if (!startMatch) return null;
+
+    // `openStart` is the index of `zone`. We want the index of the `{`.
+    const openStart = startMatch.index + startMatch[1].length;
+    // The `{` is somewhere after `openStart`; find it.
+    const braceIdx = content.indexOf("{", openStart);
+    if (braceIdx === -1) return null;
+    const openEnd = braceIdx + 1;
+
+    // Track brace depth to find the matching `}`.
+    let depth = 1;
+    let i = openEnd;
+    let inString = false;
+    let inComment = false;
+    while (i < content.length) {
+        const ch = content[i];
+        const next = content[i + 1];
+
+        if (inComment) {
+            if (ch === "\n") inComment = false;
+        } else if (inString) {
+            if (ch === "\\") {
+                i += 2;
+                continue;
+            }
+            if (ch === '"') inString = false;
+        } else {
+            if (ch === "/" && next === "/") {
+                inComment = true;
+                i += 2;
+                continue;
+            }
+            if (ch === "/" && next === "*") {
+                // Block comment — skip to */
+                const end = content.indexOf("*/", i + 2);
+                if (end === -1) return null;
+                i = end + 2;
+                continue;
+            }
+            if (ch === '"') inString = true;
+            else if (ch === "{") depth++;
+            else if (ch === "}") {
+                depth--;
+                if (depth === 0) {
+                    const closeStart = i;
+                    const end = i + 1;
+                    return {
+                        start: openStart,
+                        openEnd,
+                        closeStart,
+                        end,
+                        open: content.slice(openStart, openEnd),
+                        body: content.slice(openEnd, closeStart),
+                        close: content.slice(closeStart, end),
+                    };
+                }
+            }
+        }
+        i++;
+    }
+    return null;
+}
+
+/**
+ * Expand a block's `[start, end)` slice to include one preceding blank
+ * line and any following newline, so that removing a block from the
+ * file leaves clean blank-line separation between the surrounding
+ * blocks.
+ *
+ * Also absorbs the trailing `;` that terminates a BIND statement
+ * (e.g. `zone "..." { ... };`). Without this, removing a block leaves
+ * a stray `;` in the file which — while not strictly invalid BIND
+ * syntax — caused `rndc reconfig` to fail in practice on the staging
+ * deployment.
+ */
+function blockWithSurroundingWhitespace(
+    content: string,
+    block: { start: number; end: number }
+): { start: number; end: number } {
+    let start = block.start;
+    // Walk back over one optional newline and one optional blank line
+    // (i.e. one blank line plus the newline that follows it).
+    if (start > 0 && content[start - 1] === "\n") {
+        start -= 1;
+        if (start > 0 && content[start - 1] === "\n") {
+            start -= 1;
+        }
+    }
+
+    let end = block.end;
+    // Eat the terminating `;` if present.
+    if (end < content.length && content[end] === ";") end += 1;
+    // Eat a following newline (if any).
+    if (end < content.length && content[end] === "\n") end += 1;
+    return { start, end };
 }
 
 /**
@@ -177,29 +291,24 @@ export function setInlineSigningInNamedConfLocal(
         return false;
     }
 
-    // Match the zone block (greedy on inner braces for nested allow-update etc.)
-    const blockRegex = new RegExp(
-        `(zone\\s+"${escapeRegExp(domain)}"\\s*\\{)([^}]*)(\\})`,
-        "m"
-    );
-    const match = rawContent.match(blockRegex);
-    if (!match) {
+    const block = findZoneBlock(rawContent, domain);
+    if (!block) {
         console.error(`Zone "${domain}" not found in ${NAMED_CONF_LOCAL}.`);
         return false;
     }
 
-    const [, open, body, close] = match;
-    let newBody = body;
-
-    // Strip any existing inline-signing line (and its preceding whitespace)
-    newBody = newBody.replace(/\s*inline-signing\s+(yes|no)\s*;?/g, "");
+    let newBody = block.body;
+    // Strip any existing inline-signing directive (covers both `inline-signing yes;` and
+    // `inline-signing no;`, with arbitrary leading whitespace).
+    newBody = newBody.replace(/[ \t]*inline-signing[ \t]+(yes|no)[ \t]*;?[ \t]*\n?/g, "");
 
     if (enabled) {
         newBody = newBody.trimEnd() + "\n    inline-signing yes;\n";
     }
 
-    const newBlock = `${open}${newBody}${close}`;
-    const updatedContent = rawContent.replace(blockRegex, newBlock);
+    const newBlock = `${block.open}${newBody}${block.close}`;
+    const updatedContent =
+        rawContent.slice(0, block.start) + newBlock + rawContent.slice(block.end);
 
     return writeConfigFile(NAMED_CONF_LOCAL, updatedContent);
 }

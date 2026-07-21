@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import {
     zoneStatus,
-    reloadZone,
     reconfig,
     freeze,
     thaw,
@@ -89,24 +88,23 @@ export async function POST(
     }
 
     try {
-        // 1) Re-read named.conf into the running config. This picks up
-        //    the change to the zone block (it doesn't reload the zone
-        //    itself, just registers the new options).
+        // `rndc reconfig` re-reads named.conf and reloads any zone whose
+        // block changed. That's all we need — do NOT also call
+        // `rndc reload <zone>` afterwards: BIND refuses `rndc reload`
+        // on a dynamic zone ("dynamic zone") and that spurious failure
+        // would make us undo a change that BIND had already applied.
         await reconfig();
-        // 2) Reload just this zone so BIND applies the new options
-        //    atomically without disturbing other zones.
-        await reloadZone(domain);
     } catch (err) {
         // We edited the file but BIND didn't accept the reload. Try to
         // undo the named.conf.local edit so on-disk state matches
         // BIND's running state.
         const stderr = err instanceof RndcError ? (err.stderr || err.message) : (err instanceof Error ? err.message : String(err));
-        console.error(`rndc reload ${domain} failed after editing named.conf.local:`, err);
+        console.error(`rndc reconfig failed after editing named.conf.local for ${domain}:`, err);
 
         setInlineSigningInNamedConfLocal(domain, !enabled);
         return NextResponse.json(
             {
-                error: `Failed to ${action} DNSSEC: rndc reload was rejected. named.conf.local was reverted.`,
+                error: `Failed to ${action} DNSSEC: rndc reconfig was rejected. named.conf.local was reverted.`,
                 stderr,
             },
             { status: 500 }

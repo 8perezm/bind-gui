@@ -32,6 +32,14 @@ Open [http://localhost:3001](http://localhost:3001).
 
 > **Note:** The development server runs on port **3001** (not the Next.js default 3000).
 
+## BIND Configuration
+
+The `bind/config/named.conf.options` file **must** include `allow-new-zones yes;`
+in the `options` block. BIND 9.18+ defaults this to `no`, which causes
+`rndc addzone` / `rndc delzone` to fail with the generic error `"failure"`.
+The Bind DNS GUI uses these commands when creating zones and toggling DNSSEC
+inline-signing, so this setting is required for full functionality.
+
 ## Testing Dynamic Updates
 
 Once the stack is running, you can test the nsupdate + rndc integration manually:

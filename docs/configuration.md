@@ -133,6 +133,47 @@ the connection with `rndc: connection to remote host closed`. The GUI and
 `scripts/migrate-to-dynamic.mjs` already pass `-k` automatically; only manual
 commands need it.
 
+## DNSSEC (inline-signing)
+
+BIND 9 can sign zones automatically with **DNSSEC inline-signing**. When enabled, BIND generates and manages its own key material (ZSK + KSK), signs all records on-the-fly, and re-signs the zone automatically after each nsupdate transaction.
+
+### Per-Zone Toggle
+
+The GUI provides a per-zone toggle for inline-signing:
+
+1. **During zone creation** — check "DNSSEC (inline-signing)" in the create-zone dialog.
+2. **After creation** — open the zone, click the `[DNSSEC]` button in the toolbar, then flip the switch.
+
+The toggle calls `rndc modzone` to update the running configuration, then freezes and thaws the zone to force an immediate sign cycle. No container restart is needed.
+
+### Publishing the DS Record
+
+Once inline-signing is enabled, BIND publishes **CDS and CDNSKEY** records in the zone automatically. The DNSSEC page in the GUI shows:
+
+- **CDS** — Child DS record (a digest the parent can use directly)
+- **CDNSKEY** — Child DNSKEY record (alternative mechanism)
+- **DS Record** — computed by `dnssec-dsfromkey` from the zone's key files
+
+**You must publish the DS record at your registrar** to complete the DNSSEC chain of trust. RFC 8078 (CDS/CDNSKEY → automatic DS update) is supported by some registrars but not all — check with yours.
+
+### Manual Verification
+
+Inside the `bind-gui` container you can verify DNSSEC status at any time:
+
+```bash
+rndc -s bind9 -k /etc/bind/bind-gui.key zonestatus example.com
+dig @127.0.0.1 example.com SOA +dnssec
+dig @127.0.0.1 example.com CDS +short
+dnssec-dsfromkey example.com
+```
+
+### Further Reading
+
+- [Debian BIND 9 Server Configuration](https://wiki.debian.org/BIND9) — comprehensive guide covering DDNS, DNSSEC, chroot, and more (config snippets apply to any distribution)
+- [RFC 6781](https://datatracker.ietf.org/doc/html/rfc6781) — DNSSEC Operational Practices
+- [RFC 7344](https://datatracker.ietf.org/doc/html/rfc7344) — CDS/CDNSKEY for automated DS updates
+- [RFC 8078](https://datatracker.ietf.org/doc/html/rfc8078) — Managing DS Records via CDS/CDNSKEY
+
 ## API Response Format
 
 The PUT `/api/zones/[filename]` endpoint returns:

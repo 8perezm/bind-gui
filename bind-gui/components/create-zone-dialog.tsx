@@ -24,6 +24,7 @@ export default function CreateZoneDialog({
     const [domain, setDomain] = useState("");
     const [primaryNs, setPrimaryNs] = useState("ns1.");
     const [adminEmail, setAdminEmail] = useState("admin.");
+    const [nameserverIp, setNameserverIp] = useState("");
     const [ttl, setTtl] = useState("86400");
     const [inlineSigning, setInlineSigning] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -41,6 +42,7 @@ export default function CreateZoneDialog({
         setDomain("");
         setPrimaryNs("ns1.");
         setAdminEmail("admin.");
+        setNameserverIp("");
         setTtl("86400");
         setInlineSigning(false);
         setError(null);
@@ -55,16 +57,21 @@ export default function CreateZoneDialog({
         setError(null);
 
         try {
+            const body: Record<string, unknown> = {
+                domain: domain.trim(),
+                primaryNs: `${primaryNs}${domain}.`,
+                adminEmail: `${adminEmail}${domain}.`,
+                ttl: parseInt(ttl, 10),
+                inlineSigning,
+            };
+            if (nameserverIp.trim()) {
+                body.nameserverIp = nameserverIp.trim();
+            }
+
             const res = await fetch("/api/zones", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    domain: domain.trim(),
-                    primaryNs: `${primaryNs}${domain}.`,
-                    adminEmail: `${adminEmail}${domain}.`,
-                    ttl: parseInt(ttl, 10),
-                    inlineSigning,
-                }),
+                body: JSON.stringify(body),
             });
 
             const result = await res.json();
@@ -137,6 +144,18 @@ export default function CreateZoneDialog({
                             placeholder="86400"
                         />
                     </Field>
+
+                    <Field label={`${primaryNs}${domain}.  IP  (optional, glue A record)`}>
+                        <Input
+                            value={nameserverIp}
+                            onChange={(e) => setNameserverIp(e.target.value)}
+                            placeholder="192.0.2.1"
+                        />
+                    </Field>
+                    <p className="text-xs text-mutedForeground font-mono uppercase tracking-wide -mt-3">
+                        Required if the nameserver is in-bailiwick — BIND will not load
+                        the zone otherwise.
+                    </p>
 
                     <div className="flex items-center justify-between pt-2">
                         <div>

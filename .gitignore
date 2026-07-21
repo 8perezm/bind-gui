@@ -10,3 +10,5 @@ node_modules/
 # TSIG key shared between bind9 and bind-gui for nsupdate + rndc auth
 # Generate with: docker compose run --rm bind9 tsig-keygen -a hmac-sha256 bind-gui-key
 bind/config/bind-gui.key
+
+.playwright-mcp/

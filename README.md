@@ -33,6 +33,7 @@
 - **📂 Config Viewer** — Browse `named.conf` and other BIND configuration files in read-only mode.
 - **🔐 Authentication** — Password-protected access via environment variables. Simple, no database required.
 - **♻️ Dynamic Updates (RFC 2136)** — Record edits go through nsupdate with TSIG authentication — no container restart needed, SOA serial bumps automatically.
+- **🔐 DNSSEC inline-signing** — Toggle per-zone DNSSEC signing with a single switch. BIND manages keys and signs automatically. View CDS/CDNSKEY/DS records to publish at your registrar.
 - **🎨 Monochrome Design** — Clean, distraction-free black-and-white interface that means business.
 - **🐳 Docker Native** — Ready-to-use Docker image on Docker Hub. Works with your existing BIND9 container.
 

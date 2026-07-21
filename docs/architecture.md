@@ -97,6 +97,8 @@ Authentication uses next-auth with a credentials provider. Sessions are managed 
 | `/api/zones/[filename]` | `GET` | Yes | Get a zone's parsed records and metadata |
 | `/api/zones/[filename]` | `PUT` | Yes | Diff+nsupdate records (RFC 2136) |
 | `/api/zones/[filename]` | `DELETE` | Yes | Delete a zone (`rndc delzone` + remove file) |
+| `/api/zones/[filename]/dnssec` | `GET` | Yes | Get zone DNSSEC status + DS/CDS/CDNSKEY records |
+| `/api/zones/[filename]/dnssec` | `POST` | Yes | Enable/disable DNSSEC inline-signing (`{ action: "enable" | "disable" }`) |
 | `/api/config/files` | `GET` | Yes | List config files (named.conf, etc.) |
 | `/api/version` | `GET` | Yes | Get application version |
 | `/api/auth/[...nextauth]` | `POST` | No | NextAuth authentication endpoints |
