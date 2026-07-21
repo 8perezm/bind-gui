@@ -1,7 +1,7 @@
 services:
   # ── BIND9 DNS Server ──────────────────────────────────────────────
   bind9:
-    image: internetsystemsconsortium/bind9:9.18
+    image: internetsystemsconsortium/bind9:9.20
     container_name: bind9
     restart: unless-stopped
     ports:
@@ -38,11 +38,9 @@ services:
       - BIND_RNDC_HOST=bind9
       - BIND_DNS_HOST=bind9
       - TSIG_KEY_FILE=/etc/bind/bind-gui.key
-      - RNDC_CONFIG=/etc/rndc.conf
     volumes:
       - ./bind/config:/app/bind/config:rw
       - ./bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
-      - ./bind-gui/rndc.conf:/etc/rndc.conf:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       bind9:

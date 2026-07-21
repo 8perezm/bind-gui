@@ -16,10 +16,8 @@ services:
       - BIND_RNDC_HOST=bind9
       - BIND_DNS_HOST=bind9
       - TSIG_KEY_FILE=/etc/bind/bind-gui.key
-      - RNDC_CONFIG=/etc/rndc.conf
     volumes:
       - ../bind/config:/app/bind/config:rw
       - ../bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
-      - ./rndc.conf:/etc/rndc.conf:ro
       # Mount the Docker socket (optional — no longer required for zone writes)
       - /var/run/docker.sock:/var/run/docker.sock:ro

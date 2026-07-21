@@ -54,10 +54,25 @@ mkdir bind-dns-gui && cd bind-dns-gui
 mkdir -p bind/config
 ```
 
-Place your zone files into `bind/config/`.  
-This repo includes sample configuration files (`named.conf`, `named.conf.options`, `named.conf.local`) and editable templates (`db.example.com`, `db.192.168.5`) to get you started — just tweak the domain names and IPs to match your network.
+Bind starts with an empty `named.conf.local` — you don't need any zone files to begin. The first thing you do after logging into the GUI is click **Create zone**, which writes the zone file and registers it with BIND via `rndc addzone`. No templates to copy, no config to edit by hand.
 
-No zone files yet? The GUI will still work — start with the samples and create your zones from the web UI.
+### Importing existing zone files
+
+If you're migrating from an existing BIND server, drop your `db.*` files into `bind/config/` and add `zone` blocks to `named.conf.local` **before** starting the stack. BIND will load and serve them automatically — no command needed — and the GUI will list them read-only right away.
+
+To make those zones **editable** through the GUI, each `zone` block needs:
+
+```bind
+allow-update { key "bind-gui-key"; };
+```
+
+If your existing blocks already say `allow-update { none; }`, run the one-shot migration script:
+
+```bash
+docker compose exec bind-gui node scripts/migrate-to-dynamic.mjs
+```
+
+It rewrites the config and runs `rndc reconfig` so the change takes effect without a container restart. If your existing blocks have **no** `allow-update` clause at all, add the line manually.
 
 ### 3. Create `compose.yaml`
 

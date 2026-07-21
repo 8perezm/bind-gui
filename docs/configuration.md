@@ -13,7 +13,7 @@ The Bind DNS GUI is configured entirely through environment variables. Create a 
 | `CONFIG_DIR` | No | `/app/bind/config` | Path to BIND config files (inside the GUI container) |
 | `BIND_RNDC_HOST` | No | `bind9` | Hostname of the BIND9 container for rndc connections (port 953) |
 | `BIND_DNS_HOST` | No | `bind9` | Hostname of the BIND9 container for nsupdate connections (port 53/TCP) |
-| `TSIG_KEY_FILE` | No | `/etc/bind/bind-gui.key` | Path to the TSIG key file for nsupdate authentication |
+| `TSIG_KEY_FILE` | No | `/etc/bind/bind-gui.key` | Path to the TSIG key file for nsupdate and rndc authentication |
 
 ### Example `.env`
 
@@ -44,10 +44,13 @@ bind/
     ├── named.conf           # Main BIND configuration
     ├── named.conf.local     # Local zone declarations
     ├── named.conf.options   # BIND options
-    ├── db.example.com       # Zone file for example.com
-    ├── db.192.168.5         # Reverse zone file
-    └── ...                  # Any other db.* zone files
+    ├── bind-gui.key         # TSIG key for nsupdate + rndc auth
+    └── ...                  # db.<zone> files appear here as you create zones
 ```
+
+The repo does **not** ship with any pre-existing zone files. `db.<zone>` files
+are created on demand the first time you create a zone in the GUI (or when you
+add a zone manually and write a file into this directory).
 
 ### Zone File Format
 
@@ -113,6 +116,22 @@ Creating or deleting a zone uses `rndc addzone` / `delzone` over TCP/953:
 - No `named.conf.local` edits — BIND manages its own state
 - No container restart — the zone appears or disappears from the running server immediately
 - Zone files are still written to disk (as static source of truth), but the running configuration is managed by BIND
+
+### Manual rndc — always pass `-k`
+
+When running `rndc` interactively inside the `bind-gui` container, **always
+include `-k /etc/bind/bind-gui.key`** so it authenticates with the
+`bind-gui-key` shared with BIND:
+
+```bash
+docker compose exec bind-gui rndc -s bind9 -k /etc/bind/bind-gui.key status
+docker compose exec bind-gui rndc -s bind9 -k /etc/bind/bind-gui.key zonestatus example.com
+```
+
+Without `-k`, `rndc` falls back to its default key file and BIND will reject
+the connection with `rndc: connection to remote host closed`. The GUI and
+`scripts/migrate-to-dynamic.mjs` already pass `-k` automatically; only manual
+commands need it.
 
 ## API Response Format
 

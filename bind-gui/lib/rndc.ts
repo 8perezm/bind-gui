@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 
 const RNDC_HOST = process.env.BIND_RNDC_HOST || "127.0.0.1";
+const TSIG_KEY_FILE = process.env.TSIG_KEY_FILE || "/etc/bind/bind-gui.key";
 const TIMEOUT_MS = 10_000;
 
 export class RndcError extends Error {
@@ -30,7 +31,7 @@ export interface ZoneStatus {
 
 function runRndc(args: string[]): Promise<RndcResult> {
     return new Promise((resolve, reject) => {
-        const child = spawn("rndc", ["-s", RNDC_HOST, ...args], {
+        const child = spawn("rndc", ["-s", RNDC_HOST, "-k", TSIG_KEY_FILE, ...args], {
             timeout: TIMEOUT_MS,
             stdio: ["ignore", "pipe", "pipe"],
         });

@@ -53,15 +53,21 @@ docker compose exec bind-gui nsupdate -k /etc/bind/bind-gui.key -v /tmp/test-upd
 
 ### Manual rndc test
 
+> **Important:** Always pass `-k /etc/bind/bind-gui.key` so rndc authenticates
+> with the `bind-gui-key`. Without `-k`, rndc falls back to its default key
+> file, which in older images was `/etc/bind/rndc.key` (with a different
+> `rndc-key`) — BIND would then reject the connection with
+> "connection to remote host closed".
+
 ```bash
 # Check zone status
-docker compose exec bind-gui rndc -s bind9 zonestatus test.example.com
+docker compose exec bind-gui rndc -s bind9 -k /etc/bind/bind-gui.key zonestatus test.example.com
 
 # List all zones
-docker compose exec bind-gui rndc -s bind9 status
+docker compose exec bind-gui rndc -s bind9 -k /etc/bind/bind-gui.key status
 
 # Add a zone manually
-docker compose exec bind-gui rndc -s bind9 addzone test2.example.com \
+docker compose exec bind-gui rndc -s bind9 -k /etc/bind/bind-gui.key addzone test2.example.com \
   '{ type master; file "/etc/bind/db.test2.example.com"; allow-update { key "bind-gui-key"; }; };'
 ```
 
