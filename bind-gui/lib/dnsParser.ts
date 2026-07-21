@@ -265,7 +265,12 @@ export function generateZoneFile(options: NewZoneOptions): string {
     lines.push(`                        ${minimumTtl} )         ; Minimum TTL`);
     lines.push("");
 
-    // Records grouped by type for readability (same pattern as serializeZoneFile)
+    // BIND refuses to load a zone with no NS records, so always emit
+    // the apex NS pointing at the SOA primary NS. If the primary NS
+    // is in-bailiwick (e.g. `ns1.example.com` for zone `example.com`)
+    // the user must also add a glue A record via the record editor,
+    // otherwise BIND's strict checks will still reject the zone with
+    // "NS has no address records".
     const nsRecords = records.filter((r) => r.type === "NS");
     const aRecords = records.filter((r) => r.type === "A");
     const cnameRecords = records.filter((r) => r.type === "CNAME");
@@ -276,7 +281,13 @@ export function generateZoneFile(options: NewZoneOptions): string {
         (r) => !["NS", "A", "CNAME", "MX", "TXT", "PTR"].includes(r.type)
     );
 
-    if (nsRecords.length) {
+    if (nsRecords.length === 0) {
+        // Default apex NS pointing at the SOA primary NS. Always emit
+        // this when the caller didn't supply their own NS records.
+        lines.push("; Name servers");
+        lines.push(`@       IN      NS      ${soaPrimaryNs}`);
+        lines.push("");
+    } else {
         lines.push("; Name servers");
         for (const rec of nsRecords) {
             lines.push(formatRecord(rec));

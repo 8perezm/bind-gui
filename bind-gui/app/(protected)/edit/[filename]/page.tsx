@@ -8,7 +8,7 @@ import RecordFormDialog from "@/components/record-form-dialog";
 import ConfirmDialog from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Shield } from "lucide-react";
 
 export default function EditZonePage() {
     const params = useParams();
@@ -159,6 +159,13 @@ export default function EditZonePage() {
                             {message}
                         </span>
                     )}
+                    <Link
+                        href={`/zones/${encodeURIComponent(filename)}/dnssec`}
+                        className="inline-flex items-center gap-2 px-4 py-2 text-xs font-mono uppercase tracking-widest border-2 border-black hover:bg-black hover:text-white transition-colors duration-INSTANT"
+                    >
+                        <Shield size={14} strokeWidth={1.5} />
+                        DNSSEC
+                    </Link>
                     <Button variant="outline" onClick={() => setDeleteZoneOpen(true)}>
                         Delete Zone
                     </Button>

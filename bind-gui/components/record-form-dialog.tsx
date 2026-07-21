@@ -6,7 +6,7 @@ import { RECORD_TYPES } from "@/lib/dnsTypes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface RecordFormDialogProps {
@@ -77,9 +77,14 @@ export default function RecordFormDialog({
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o && !record) reset(); }}>
             {!isControlled && <DialogTrigger asChild>{trigger}</DialogTrigger>}
             <DialogContent className="max-w-md">
-                <DialogTitle className="font-heading text-3xl tracking-tight mb-6">
+                <DialogTitle className="font-heading text-3xl tracking-tight mb-2">
                     {record ? "Edit Record" : "Add Record"}
                 </DialogTitle>
+                <DialogDescription className="text-mutedForeground text-sm mb-6">
+                    {record
+                        ? "Change a resource record. The change is sent to BIND via nsupdate when you click Save Zone on the zone page."
+                        : "Add a new resource record to the zone. It is staged in the editor until you click Save Zone."}
+                </DialogDescription>
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <div className="grid grid-cols-2 gap-4">
                         <Field label="Name">
@@ -113,7 +118,7 @@ export default function RecordFormDialog({
 
                     <div className="flex gap-3 pt-4 border-t-2 border-black mt-6">
                         <Button type="submit">{record ? "Save Changes" : "Add Record"}</Button>
-                        <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
                     </div>
                 </form>
             </DialogContent>

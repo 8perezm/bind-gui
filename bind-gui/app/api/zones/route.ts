@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
-import { listZoneFiles, readZoneFile, createZoneFile } from "@/lib/fileSystem";
+import {
+    listZoneFiles,
+    readZoneFile,
+    createZoneFile,
+    deleteZoneFile,
+    registerZoneInNamedConfLocal,
+    unregisterZoneFromNamedConfLocal,
+    setInlineSigningInNamedConfLocal,
+} from "@/lib/fileSystem";
 import { parseZoneFile, generateZoneFile } from "@/lib/dnsParser";
-import { addZone } from "@/lib/rndc";
+import { addZone, reconfig, RndcError } from "@/lib/rndc";
 
 export async function GET() {
     const zoneFilenames = listZoneFiles();
@@ -29,11 +37,12 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { domain, primaryNs, adminEmail, ttl } = body as {
+        const { domain, primaryNs, adminEmail, ttl, inlineSigning } = body as {
             domain: string;
             primaryNs?: string;
             adminEmail?: string;
             ttl?: number;
+            inlineSigning?: boolean;
         };
 
         if (!domain || typeof domain !== "string") {
@@ -72,7 +81,6 @@ export async function POST(request: Request) {
 
         // Create the file on disk
         const success = createZoneFile(filename, content);
-
         if (!success) {
             return NextResponse.json(
                 { error: "Failed to create zone file" },
@@ -80,17 +88,65 @@ export async function POST(request: Request) {
             );
         }
 
-        // Register the zone with the running BIND via rndc addzone
+        // Register the zone in named.conf.local. This is what makes BIND
+        // actually serve the zone after `rndc reconfig`. It's idempotent,
+        // safe, and works on any BIND deployment (no `allow-new-zones`
+        // required — that's only needed for `rndc addzone`).
+        const registered = registerZoneInNamedConfLocal(domain);
+        if (!registered) {
+            deleteZoneFile(filename);
+            return NextResponse.json(
+                { error: "Failed to register zone in named.conf.local" },
+                { status: 500 }
+            );
+        }
+
+        if (inlineSigning) {
+            const toggled = setInlineSigningInNamedConfLocal(domain, true);
+            if (!toggled) {
+                // Roll back
+                unregisterZoneFromNamedConfLocal(domain);
+                deleteZoneFile(filename);
+                return NextResponse.json(
+                    { error: "Failed to enable inline-signing in named.conf.local" },
+                    { status: 500 }
+                );
+            }
+        }
+
+        // Ask BIND to re-read named.conf so the new zone block is loaded.
+        // Try `reconfig` first (non-disruptive). If that fails because the
+        // BIND deployment requires `allow-new-zones` for newly-introduced
+        // zones via reconfig, fall back to `rndc addzone`. If both fail,
+        // roll back so the user isn't left with an orphan.
+        let loaded = false;
+        let lastError: string | null = null;
+
         try {
-            await addZone(domain);
-        } catch (rndcErr) {
-            console.error(`rndc addzone failed for "${domain}":`, rndcErr);
+            await reconfig();
+            loaded = true;
+        } catch (reconfigErr) {
+            lastError = reconfigErr instanceof Error ? reconfigErr.message : String(reconfigErr);
+            console.warn(`rndc reconfig failed for "${domain}", falling back to addzone:`, reconfigErr);
+            try {
+                await addZone(domain, { inlineSigning });
+                loaded = true;
+            } catch (addzoneErr) {
+                lastError = addzoneErr instanceof Error ? addzoneErr.message : String(addzoneErr);
+                if (addzoneErr instanceof RndcError) lastError = addzoneErr.stderr || lastError;
+            }
+        }
+
+        if (!loaded) {
+            // Roll back: remove the zone from named.conf.local and delete the file.
+            unregisterZoneFromNamedConfLocal(domain);
+            deleteZoneFile(filename);
             return NextResponse.json(
                 {
-                    error: "Zone file created but BIND registration failed. Check that bind-gui.key exists and rndc can reach the bind9 container.",
-                    detail: rndcErr instanceof Error ? rndcErr.message : String(rndcErr),
+                    error: "BIND would not load the new zone. The zone was not created. Ensure rndc can reach BIND and the controls block in named.conf allows this host.",
+                    detail: lastError,
                 },
-                { status: 500 },
+                { status: 500 }
             );
         }
 

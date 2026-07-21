@@ -66,6 +66,24 @@ export function readConfigFile(filename: string): string | null {
     }
 }
 
+/**
+ * Read a config file but redact HMAC secrets so it can be safely
+ * shown in the UI. Returns null if the file can't be read.
+ */
+export function readConfigFileRedacted(filename: string): string | null {
+    const content = readConfigFile(filename);
+    if (content === null) return null;
+    return redactSecrets(content);
+}
+
+/**
+ * Replace `secret "..."` values with `secret "REDACTED"`. Leaves the
+ * rest of the file (key names, algorithms, semicolons) intact.
+ */
+export function redactSecrets(content: string): string {
+    return content.replace(/(secret\s+)"[^"]*"/g, '$1"REDACTED"');
+}
+
 /** Write content back to a config file in CONFIG_DIR */
 export function writeConfigFile(filename: string, content: string): boolean {
     try {
@@ -137,6 +155,53 @@ export function unregisterZoneFromNamedConfLocal(domain: string): boolean {
 
 function escapeRegExp(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Add or remove `inline-signing yes;` inside the zone block for `domain`
+ * in named.conf.local. Returns true on success (or no-op if already in
+ * the desired state).
+ *
+ * This is the safe way to toggle DNSSEC on a static zone — it edits the
+ * configuration file and lets the caller `rndc reload <zone>` after, so
+ * the running BIND instance is never without the zone in the meantime
+ * (the way `rndc delzone + addzone` would be).
+ */
+export function setInlineSigningInNamedConfLocal(
+    domain: string,
+    enabled: boolean
+): boolean {
+    const rawContent = readConfigFile(NAMED_CONF_LOCAL);
+    if (!rawContent) {
+        console.error(`${NAMED_CONF_LOCAL} does not exist; cannot toggle inline-signing for "${domain}".`);
+        return false;
+    }
+
+    // Match the zone block (greedy on inner braces for nested allow-update etc.)
+    const blockRegex = new RegExp(
+        `(zone\\s+"${escapeRegExp(domain)}"\\s*\\{)([^}]*)(\\})`,
+        "m"
+    );
+    const match = rawContent.match(blockRegex);
+    if (!match) {
+        console.error(`Zone "${domain}" not found in ${NAMED_CONF_LOCAL}.`);
+        return false;
+    }
+
+    const [, open, body, close] = match;
+    let newBody = body;
+
+    // Strip any existing inline-signing line (and its preceding whitespace)
+    newBody = newBody.replace(/\s*inline-signing\s+(yes|no)\s*;?/g, "");
+
+    if (enabled) {
+        newBody = newBody.trimEnd() + "\n    inline-signing yes;\n";
+    }
+
+    const newBlock = `${open}${newBody}${close}`;
+    const updatedContent = rawContent.replace(blockRegex, newBlock);
+
+    return writeConfigFile(NAMED_CONF_LOCAL, updatedContent);
 }
 
 export function createZoneFile(filename: string, content: string): boolean {

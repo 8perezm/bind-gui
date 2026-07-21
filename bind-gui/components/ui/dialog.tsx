@@ -43,7 +43,17 @@ const DialogContent = React.forwardRef<
             )}
             {...props}
         >
-            <DialogTitle className="sr-only">{typeof children === 'string' ? children : ''}</DialogTitle>
+            {/*
+              No auto-injected <DialogTitle> here — radix-react-dialog
+              will warn "Missing Description" if a DialogContent has no
+              DialogDescription, and the previous code's attempt to
+              auto-derive a title from `children` was both broken
+              (children is a ReactNode, not a string, so the sr-only
+              title was always empty) and unnecessary — every caller
+              already passes a DialogTitle as a child. Callers that
+              need a description must add <DialogDescription> as a
+              child too.
+            */}
             {children}
             <DialogPrimitive.Close className="absolute right-4 top-4 text-black hover:bg-muted transition-colors duration-INSTANT">
                 <X size={20} strokeWidth={1.5} />

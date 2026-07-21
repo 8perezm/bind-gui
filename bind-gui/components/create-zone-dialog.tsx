@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 
 interface CreateZoneDialogProps {
     trigger?: React.ReactNode;
@@ -24,6 +25,7 @@ export default function CreateZoneDialog({
     const [primaryNs, setPrimaryNs] = useState("ns1.");
     const [adminEmail, setAdminEmail] = useState("admin.");
     const [ttl, setTtl] = useState("86400");
+    const [inlineSigning, setInlineSigning] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
@@ -40,6 +42,7 @@ export default function CreateZoneDialog({
         setPrimaryNs("ns1.");
         setAdminEmail("admin.");
         setTtl("86400");
+        setInlineSigning(false);
         setError(null);
         setSaving(false);
     }
@@ -60,6 +63,7 @@ export default function CreateZoneDialog({
                     primaryNs: `${primaryNs}${domain}.`,
                     adminEmail: `${adminEmail}${domain}.`,
                     ttl: parseInt(ttl, 10),
+                    inlineSigning,
                 }),
             });
 
@@ -85,9 +89,13 @@ export default function CreateZoneDialog({
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
             {!isControlled && <DialogTrigger asChild>{trigger}</DialogTrigger>}
             <DialogContent className="max-w-md">
-                <DialogTitle className="font-heading text-3xl tracking-tight mb-6">
+                <DialogTitle className="font-heading text-3xl tracking-tight mb-2">
                     Create New Zone
                 </DialogTitle>
+                <DialogDescription className="text-mutedForeground text-sm mb-6">
+                    Create a new authoritative DNS zone. The zone file is written to the
+                    shared config directory and registered in named.conf.local.
+                </DialogDescription>
                 <form onSubmit={handleSubmit} className="space-y-5">
                     <Field label="Domain Name">
                         <Input
@@ -130,6 +138,19 @@ export default function CreateZoneDialog({
                         />
                     </Field>
 
+                    <div className="flex items-center justify-between pt-2">
+                        <div>
+                            <Label>DNSSEC (inline-signing)</Label>
+                            <p className="text-xs text-mutedForeground font-mono mt-1">
+                                BIND signs the zone automatically. Publish the DS record at your registrar.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={inlineSigning}
+                            onCheckedChange={setInlineSigning}
+                        />
+                    </div>
+
                     {error && (
                         <p className="text-red-600 font-mono text-sm uppercase tracking-wider border-l-2 border-red-600 pl-3">
                             {error}
@@ -140,7 +161,7 @@ export default function CreateZoneDialog({
                         <Button type="submit" disabled={saving}>
                             {saving ? "Creating..." : "Create Zone"}
                         </Button>
-                        <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
                     </div>
                 </form>
             </DialogContent>

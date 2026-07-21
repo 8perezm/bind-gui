@@ -26,7 +26,14 @@ export interface ZoneStatus {
     serial: number | null;
     dynamic: boolean;
     journal: boolean;
+    inlineSigning: boolean;
+    keyDirectory: string | null;
     raw: Record<string, string>;
+}
+
+export interface AddZoneOptions {
+    allowUpdateKey?: string;
+    inlineSigning?: boolean;
 }
 
 function runRndc(args: string[]): Promise<RndcResult> {
@@ -88,11 +95,12 @@ function validateDomain(domain: string): void {
  */
 export async function addZone(
     domain: string,
-    allowUpdateKey?: string,
+    options?: AddZoneOptions,
 ): Promise<RndcResult> {
     validateDomain(domain);
-    const key = allowUpdateKey || "bind-gui-key";
-    const configStr = `type master; file "/etc/bind/db.${domain}"; allow-update { key "${key}"; };`;
+    const key = options?.allowUpdateKey || "bind-gui-key";
+    const inline = options?.inlineSigning ? ' inline-signing yes;' : '';
+    const configStr = `{ type master; file "/etc/bind/db.${domain}"; allow-update { key "${key}"; };${inline} };`;
     return runRndc(["addzone", domain, configStr]);
 }
 
@@ -135,6 +143,41 @@ export async function reload(): Promise<RndcResult> {
     return runRndc(["reload"]);
 }
 
+/** Reload a single zone, picking up changes to its block in named.conf.local. */
+export async function reloadZone(domain: string): Promise<RndcResult> {
+    validateDomain(domain);
+    return runRndc(["reload", domain]);
+}
+
+/**
+ * Re-read the configuration file.
+ *
+ * `reconfig` is non-disruptive: it adds new zones and removes deleted
+ * zones, but does NOT re-evaluate modified zone blocks. To pick up a
+ * change inside an existing zone block you need `reloadZone(domain)`.
+ */
+export async function reconfig(): Promise<RndcResult> {
+    return runRndc(["reconfig"]);
+}
+
+/**
+ * Flush the zone's journal to the zone file.
+ *
+ * For dynamic zones, BIND keeps an incremental journal (.jnl) alongside
+ * the zone file. Without a sync, the file on disk can be stale and not
+ * reflect records added via nsupdate. Call this before reading the file
+ * to get a view that's consistent with BIND's in-memory state.
+ *
+ * Pass `clean: true` to also remove the journal after flushing.
+ */
+export async function sync(domain: string, clean = false): Promise<RndcResult> {
+    validateDomain(domain);
+    const args = ["sync"];
+    if (clean) args.push("-clean");
+    args.push(domain);
+    return runRndc(args);
+}
+
 function parseZoneStatus(output: string): ZoneStatus {
     const lines = output.split("\n");
     const raw: Record<string, string> = {};
@@ -153,6 +196,8 @@ function parseZoneStatus(output: string): ZoneStatus {
         serial: raw["serial"] ? parseInt(raw["serial"], 10) : null,
         dynamic: raw["dynamic"] === "yes",
         journal: raw["journal"] === "yes",
+        inlineSigning: raw["inline signing"] === "yes",
+        keyDirectory: raw["key directory"] || null,
         raw,
     };
 }

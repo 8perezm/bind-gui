@@ -96,6 +96,33 @@ export function diffRecords(
 }
 
 /**
+ * Normalise a DNS owner name so nsupdate interprets it correctly.
+ *
+ * nsupdate's `zone` command does NOT change the origin — the default
+ * origin is always `.` (root). A bare label like `www` is therefore
+ * treated as `www.`, which is NOT inside the zone and triggers the
+ * `NOTZONE` error. To get a name into the zone we have to make it an
+ * absolute FQDN with a trailing dot, which means appending the zone
+ * for simple labels.
+ *
+ * - `@`                       → `@`               (nsupdate special, zone apex)
+ * - `name.` (trailing dot)    → as-is              (already absolute)
+ * - `sub.name` (has dot)      → `sub.name.`        (just dot-terminate)
+ * - `www` (no dot)            → `www.{zone}.`      (build FQDN)
+ *
+ * Wildcard `*` is left as-is — nsupdate treats it as a literal name
+ * and BIND recognises it as the wildcard owner when present in the
+ * zone (it is, e.g. `*.foo.example.com`).
+ */
+function normaliseNameForNsupdate(name: string, zone: string): string {
+    if (name === "@") return name;
+    if (name === "*") return name;
+    if (name.endsWith(".")) return name;
+    if (name.includes(".")) return name + ".";
+    return `${name}.${zone}.`;
+}
+
+/**
  * Convert an array of NsupdateOp into the command lines expected
  * by an nsupdate transaction script (zone + update add/delete).
  */
@@ -109,19 +136,21 @@ export function opsToCommands(ops: NsupdateOp[]): string[] {
             currentZone = op.zone;
         }
 
+        const name = normaliseNameForNsupdate(op.name, op.zone);
+
         switch (op.kind) {
             case "add":
                 commands.push(
-                    `update add ${op.name} ${op.ttl ?? 3600} IN ${op.type} ${op.rdata ?? ""}`,
+                    `update add ${name} ${op.ttl ?? 3600} IN ${op.type} ${op.rdata ?? ""}`,
                 );
                 break;
             case "delete":
                 commands.push(
-                    `update delete ${op.name} IN ${op.type} ${op.rdata ?? ""}`,
+                    `update delete ${name} IN ${op.type} ${op.rdata ?? ""}`,
                 );
                 break;
             case "delete-rrset":
-                commands.push(`update delete ${op.name} IN ${op.type}`);
+                commands.push(`update delete ${name} IN ${op.type}`);
                 break;
         }
     }
