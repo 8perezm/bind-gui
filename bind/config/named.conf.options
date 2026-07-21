@@ -1,0 +1,43 @@
+// ── BIND9 Options ────────────────────────────────────────────────────
+// Review each setting below and adjust for your network.
+
+options {
+    directory "/var/cache/bind";
+
+    // ── Listeners ────────────────────────────────────────────────────
+    // Listen on all interfaces. Change to a specific IP if BIND
+    // should only answer on a particular network.
+    listen-on { any; };
+    listen-on-v6 { none; };
+
+    // ── Query Access ─────────────────────────────────────────────────
+    // In production, restrict this to your local subnet(s):
+    //   allow-query { 192.168.1.0/24; 10.0.0.0/8; };
+    // "any" allows queries from everywhere (only if this is a public DNS).
+    allow-query { any; };
+
+    // ── Recursion ────────────────────────────────────────────────────
+    // Set to "yes" if this server should resolve external domains
+    // for your network (recursive resolver). Set to "no" for
+    // authoritative-only mode.
+    recursion yes;
+
+    // Also-recursion for clients on RFC 1918 addresses
+    allow-recursion { any; };
+
+    // ── Forwarders ───────────────────────────────────────────────────
+    // Upstream DNS servers for external lookups (only used when
+    // recursion is enabled). Change these to your preferred resolvers.
+    forwarders {
+        8.8.8.8;
+        8.8.4.4;
+    };
+    forward only;
+
+    // ── DNSSEC ───────────────────────────────────────────────────────
+    // Disabled by default for simplicity. Enable in production if
+    // your domains support DNSSEC.
+    dnssec-validation no;
+
+    auth-nxdomain no;  // Conform to RFC 1035
+};

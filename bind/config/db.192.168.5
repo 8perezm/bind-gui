@@ -1,0 +1,28 @@
+; ── Reverse Zone Template ────────────────────────────────────────────
+; This file maps IP addresses to hostnames (PTR records).
+; Copy this file and name it db.<your-subnet> (e.g. db.192.168.1),
+; then update the zone declaration in named.conf.local.
+;
+; Replace all occurrences of "example.com" with your domain and
+; update the serial number whenever you make a change.
+
+$TTL    86400
+
+@       IN      SOA     ns1.example.com. admin.example.com. (
+                        2024010101      ; Serial (YYYYMMDDNN)
+                        3600            ; Refresh
+                        1800            ; Retry
+                        604800          ; Expire
+                        86400 )         ; Minimum TTL
+
+; Name server for this reverse zone
+@       IN      NS      ns1.example.com.
+
+; ── PTR Records ─────────────────────────────────────────────────────
+; Syntax: <last-octet> IN PTR <hostname>.
+; Example: for 192.168.1.10 →  www.example.com.
+;
+; Uncomment and customise:
+; 1       IN      PTR     ns1.example.com.
+; 10      IN      PTR     www.example.com.
+; 20      IN      PTR     mail.example.com.

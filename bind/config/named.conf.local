@@ -1,0 +1,31 @@
+// ── Local Zone Declarations ─────────────────────────────────────────
+// Declare your DNS zones here. Each zone file lives in /etc/bind/
+// (mapped to ./bind/config/ in the Docker Compose setup).
+//
+// To add a new zone:
+//   1. Write a zone file (copy db.example.com for a forward zone,
+//      or db.192.168.5 for a reverse zone).
+//   2. Add a zone block below.
+//   3. Run "docker compose restart bind9" to reload.
+
+// ── Forward Zone Example ────────────────────────────────────────────
+// Uncomment and customise for your domain:
+/*
+zone "example.com" {
+    type master;
+    file "/etc/bind/db.example.com";
+    allow-update { none; };
+};
+*/
+
+// ── Reverse Zone Example ────────────────────────────────────────────
+// Replace "1.168.192" with the reversed octets of your subnet:
+//   Network 192.168.1.0/24  →  zone "1.168.192.in-addr.arpa"
+//   Network 10.0.0.0/8      →  zone "0.0.10.in-addr.arpa"
+/*
+zone "1.168.192.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.192.168.1";
+    allow-update { none; };
+};
+*/

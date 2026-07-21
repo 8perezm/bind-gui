@@ -1,165 +1,191 @@
-# Bind DNS GUI
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://img.shields.io/badge/BIND9%20DNS%20GUI-000000?style=for-the-badge&logo=dns&logoColor=white">
+    <img src="https://img.shields.io/badge/BIND9%20DNS%20GUI-FFFFFF?style=for-the-badge&logo=dns&logoColor=black" alt="Bind DNS GUI">
+  </picture>
+</p>
 
-A minimalist, monochrome web interface to edit BIND DNS configuration files with authentication.
+<h1 align="center">Bind DNS GUI</h1>
 
-## Features
+<p align="center">
+  A minimalist web interface for your BIND9 DNS server.<br>
+  Edit zone files, manage records, and keep your self-hosted infrastructure running smoothly.
+</p>
 
-- **Zone File Editor**: Edit `db.*` zone files with a clean table-based UI
-- **Record Management**: Add, edit, and delete DNS records (A, AAAA, CNAME, MX, TXT, PTR, NS)
-- **Config Viewer**: View named.conf and other config files in read-only mode  
-- **Authentication**: Secure login with username/password from `.env`
-- **Docker Support**: Full Docker Compose integration with BIND9
+<p align="center">
+  <a href="#-quick-start"><img src="https://img.shields.io/badge/-Quick%20Start-000000?style=flat-square" alt="Quick Start"></a>
+  <a href="docs/configuration.md"><img src="https://img.shields.io/badge/-Configuration-000000?style=flat-square" alt="Configuration"></a>
+  <a href="docs/architecture.md"><img src="https://img.shields.io/badge/-Architecture-000000?style=flat-square" alt="Architecture"></a>
+  <a href="https://hub.docker.com/r/migsperez/bind-dns-gui"><img src="https://img.shields.io/badge/-Docker%20Hub-000000?style=flat-square" alt="Docker Hub"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/-MIT-000000?style=flat-square" alt="License"></a>
+</p>
 
-## Versioning
+---
 
-This project follows [Semantic Versioning](https://semver.org/) (MAJOR.MINOR.PATCH).
+## ✨ Features
 
-### Version Display
+- **📝 Zone File Editor** — Edit `db.*` zone files with a clean, table-based UI. No more `vi` on the command line.
+- **🔧 Record Management** — Add, edit, and delete DNS records: A, AAAA, CNAME, MX, TXT, PTR, NS, SOA.
+- **📂 Config Viewer** — Browse `named.conf` and other BIND configuration files in read-only mode.
+- **🔐 Authentication** — Password-protected access via environment variables. Simple, no database required.
+- **♻️ Auto-Restart** — Saves your zone changes and automatically restarts BIND9 via Docker API.
+- **🎨 Monochrome Design** — Clean, distraction-free black-and-white interface that means business.
+- **🐳 Docker Native** — Ready-to-use Docker image on Docker Hub. Works with your existing BIND9 container.
 
-The current version is displayed in the header of the web interface and can be accessed programmatically via the API:
+---
 
-```bash
-curl http://localhost:3001/api/version
-```
+## 🚀 Quick Start
 
-### Releasing a New Version
+Get up and running in under 2 minutes. You just need Docker.
 
-#### Option 1: Automatic (GitHub Actions - Recommended)
-
-Use the **Version Bump** workflow in GitHub Actions:
-
-1. Go to your repository on GitHub
-2. Navigate to **Actions** → **Version Bump**
-3. Click **Run workflow**
-4. Select the bump type (patch/minor/major)
-5. Click **Run workflow**
-
-This will automatically:
-- Update the version in `bind-gui/package.json`
-- Commit the change to main
-- Create and push a git tag (e.g., `v0.1.1`)
-- Trigger the Docker image build with proper version tags
-
-#### Option 2: Manual (Local Script)
-
-Use the provided script to bump the version and create a git tag:
+### 1. Create a project directory
 
 ```bash
-# Patch version bump (0.1.0 -> 0.1.1)
-./scripts/version-bump.sh patch
-
-# Minor version bump (0.1.0 -> 0.2.0)
-./scripts/version-bump.sh minor
-
-# Major version bump (0.1.0 -> 1.0.0)
-./scripts/version-bump.sh major
+mkdir bind-dns-gui && cd bind-dns-gui
 ```
 
-This will:
-1. Update the version in `bind-gui/package.json`
-2. Create a git commit with the version change
-3. Create a git tag (e.g., `v0.1.1`)
-
-After running the script, push the changes and tags:
+### 2. Create your BIND config directory
 
 ```bash
-git push origin main --tags
+mkdir -p bind/config
 ```
 
-### Docker Images
+Place your zone files into `bind/config/`.  
+This repo includes sample configuration files (`named.conf`, `named.conf.options`, `named.conf.local`) and editable templates (`db.example.com`, `db.192.168.5`) to get you started — just tweak the domain names and IPs to match your network.
 
-Docker images are automatically built and tagged when you push to main or create a version tag. The images are tagged as:
-- `latest` (for main branch)
-- `v1.2.3` (full semantic version from git tag)
-- `1.2` (major.minor from git tag)
-- Short SHA (for main branch commits)
+No zone files yet? The GUI will still work — start with the samples and create your zones from the web UI.
 
-## Quick Start
+### 3. Create `compose.yaml`
 
-### Prerequisites
-- Node.js 20+
-- Docker & Docker Compose
+```yaml
+services:
+  bind9:
+    image: internetsystemsconsortium/bind9:9.18
+    container_name: bind9
+    restart: unless-stopped
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+    volumes:
+      - ./bind/config:/etc/bind:ro
+      - bind-cache:/var/cache/bind
+    networks:
+      - dns-net
 
-### Development Setup
+  bind-gui:
+    image: migsperez/bind-dns-gui:latest
+    container_name: bind9-gui
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - AUTH_SECRET=${AUTH_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - NEXTAUTH_URL=http://localhost:3001
+      - CONFIG_DIR=/app/bind/config
+    volumes:
+      - ./bind/config:/app/bind/config:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      bind9:
+        condition: service_started
+    networks:
+      - dns-net
 
-1. Navigate to the bind-gui directory:
-   ```bash
-   cd bind-gui
-   ```
+networks:
+  dns-net:
+    driver: bridge
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+volumes:
+  bind-cache:
+```
 
-3. Create `.env.local` file:
-   ```env
-   AUTH_SECRET=your-secret-key-here-change-this
-   ADMIN_USERNAME=admin
-   ADMIN_PASSWORD=password
-   CONFIG_DIR=../bind/config
-   ```
+### 4. Configure environment variables
 
-4. Run development server:
-   ```bash
-   npm run dev
-   ```
-
-5. Open http://localhost:3000
-
-### Docker Deployment
-
-Run both BIND9 and GUI together:
+Copy the example file and edit it:
 
 ```bash
-docker compose -f compose.yaml up --build
+cp .env.example .env
 ```
 
-Access the GUI at http://localhost:3001
+Then fill in your values:
 
-Default credentials: `admin` / `password` (change in `.env`)
-
-## Architecture
-
-- **Framework**: Next.js 15 (App Router) + TypeScript
-- **Styling**: Tailwind CSS + Shadcn UI components  
-- **Auth**: next-auth v4 (Credentials provider)
-- **Design**: Minimalist Monochrome system with sharp corners, instant transitions, hover inversions
-
-## File Structure
-
-```
-bind-dns-gui/
-├── bind/                 # BIND DNS configuration
-│   ├── config/           # Zone files and named.conf
-│   └── compose.yaml      # Original BIND-only compose
-├── bind-gui/             # Web application
-│   ├── app/              # Next.js pages & API routes
-│   ├── components/       # Reusable React components
-│   ├── lib/              # Utilities (parser, auth, filesystem)
-│   ├── Dockerfile        # Container build for GUI
-│   └── package.json
-├── compose.yaml     # Combined BIND + GUI deployment
-└── README.md
+```env
+AUTH_SECRET=$(openssl rand -base64 32)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=changeme-to-something-strong
 ```
 
-## Environment Variables
+### 5. Start everything
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `AUTH_SECRET` | Yes | Secret key for session encryption |
-| `ADMIN_USERNAME` | No | Admin username (default: admin) |
-| `ADMIN_PASSWORD` | No | Admin password (default: password) |
-| `CONFIG_DIR` | No | Path to BIND config dir (default: ../bind/config) |
+```bash
+docker compose up -d
+```
 
-## Design System
+### 6. Open the GUI
 
-- **Fonts**: Manrope (body), Space Grotesk (headings), Patua One (logo), JetBrains Mono (technical)  
-- **Colors**: Pure black (#000000) and white (#FFFFFF) only, no accent colors
-- **Corners**: Zero border radius everywhere (sharp 90° angles)
-- **Transitions**: Instant (max 100ms) or none
-- **Hover Effects**: Black ↔ White inversions with line-based visual system
+Visit [**http://localhost:3001**](http://localhost:3001) and log in with your credentials.
 
-## License
+That's it. You now have a web UI for your DNS server.
 
-MIT
+### 7. Point your router at it
+
+For your network to actually *use* this DNS server, configure your router's DHCP settings to hand out the IP of the machine running BIND9 as the primary DNS server. Every device on your network will then resolve domains through your own server — giving you full control over DNS records, local hostnames, and ad-blocking if you choose.
+
+> **Tip:** Make sure the machine running BIND9 has a **static IP address** so it doesn't change after a router reboot.
+
+---
+
+## 📖 Documentation
+
+| Topic | Description |
+|-------|-------------|
+| [Configuration](docs/configuration.md) | Environment variables, zone files, reverse proxy setup |
+| [Architecture](docs/architecture.md) | How it works, tech stack, API routes, design system |
+| [Security](docs/security.md) | Auth, best practices, network isolation |
+| [Development](docs/development.md) | Local setup, project structure, building from source |
+
+---
+
+## 🐳 Docker Images
+
+Pre-built images are available on Docker Hub:
+
+```bash
+docker pull migsperez/bind-dns-gui:latest
+```
+
+Images are tagged with:
+- `latest` — latest stable release
+- `v1.2.3` — full semantic version
+- `1.2` — major.minor version
+
+---
+
+## 🧩 How It Works
+
+1. You log into the web GUI and edit your DNS records in a spreadsheet-like table.
+2. The GUI writes the changes directly to your BIND zone files on disk.
+3. The GUI signals BIND9 to reload via the Docker API — no SSH, no `rndc`, no fuss.
+4. Your DNS server picks up the changes immediately.
+
+Your zone files remain plain text on disk — readable, backup-able, and portable. No lock-in.
+
+---
+
+## 📸 Screenshots
+
+> *Screenshots coming soon.*
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! See [Development](docs/development.md) for local setup instructions.
+
+---
+
+## 📄 License
+
+[MIT](LICENSE)
