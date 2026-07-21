@@ -15,3 +15,5 @@ services:
       - CONFIG_DIR=/app/bind/config
     volumes:
       - ../bind/config:/app/bind/config:rw
+      # Mount the Docker socket so the GUI can restart the bind9 container after saving zone changes
+      - /var/run/docker.sock:/var/run/docker.sock:ro

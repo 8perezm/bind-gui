@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteZoneFile, readZoneFile, writeZoneFile, unregisterZoneFromNamedConfLocal } from "@/lib/fileSystem";
 import { parseZoneFile, serializeZoneFile } from "@/lib/dnsParser";
+import { restartDockerContainer } from "@/lib/restartContainer";
 import type { DnsRecord } from "@/lib/dnsTypes";
+
+const BIND_CONTAINER_NAME = "bind9";
 
 export async function GET(
     _req: NextRequest,
@@ -46,7 +49,18 @@ export async function PUT(
         return NextResponse.json({ error: "Write failed" }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    // Restart the BIND container so it picks up the updated zone file
+    const result = await restartDockerContainer(BIND_CONTAINER_NAME);
+
+    if (!result.success) {
+        console.error(`Failed to restart BIND container: ${result.error}`);
+    }
+
+    return NextResponse.json({
+        success: true,
+        containerRestarted: result.success,
+        containerError: result.error ?? null,
+    });
 }
 
 export async function DELETE(

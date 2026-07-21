@@ -105,7 +105,14 @@ export default function EditZonePage() {
                 body: JSON.stringify({ records }),
             });
             if (res.ok) {
-                setMessage("Saved successfully");
+                const data = await res.json();
+                if (data.containerRestarted) {
+                    setMessage("Saved successfully · BIND container restarted");
+                } else if (data.containerError) {
+                    setMessage("Zone saved but BIND container restart failed");
+                } else {
+                    setMessage("Saved successfully");
+                }
                 setTimeout(() => setMessage(null), 3000);
             } else {
                 setMessage("Failed to save. Check server logs.");
