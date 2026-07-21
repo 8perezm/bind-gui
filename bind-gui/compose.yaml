@@ -13,7 +13,13 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - NEXTAUTH_URL=${NEXTAUTH_URL}
       - CONFIG_DIR=/app/bind/config
+      - BIND_RNDC_HOST=bind9
+      - BIND_DNS_HOST=bind9
+      - TSIG_KEY_FILE=/etc/bind/bind-gui.key
+      - RNDC_CONFIG=/etc/rndc.conf
     volumes:
       - ../bind/config:/app/bind/config:rw
-      # Mount the Docker socket so the GUI can restart the bind9 container after saving zone changes
+      - ../bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
+      - ./rndc.conf:/etc/rndc.conf:ro
+      # Mount the Docker socket (optional — no longer required for zone writes)
       - /var/run/docker.sock:/var/run/docker.sock:ro

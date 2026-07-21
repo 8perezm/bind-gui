@@ -2,30 +2,48 @@
 
 ## Overview
 
-Bind DNS GUI is a containerized web application that provides a graphical interface for managing BIND9 DNS zone files. It runs alongside a standard BIND9 server and edits zone files directly on the filesystem.
+Bind DNS GUI is a containerized web application that provides a graphical interface for managing BIND9 DNS zones. It runs alongside a standard BIND9 server and communicates with it over the network using standard protocols — not by editing files directly.
 
 ```
-┌──────────────┐      ┌──────────────────┐
-│   Browser    │─────▶│  bind-gui (Next.js) │
-│  :3001       │      │  :3001            │
-└──────────────┘      └────────┬─────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │  Docker Socket       │
-                    │  /var/run/docker.sock│
-                    └──────────┬──────────┘
-                               │ POST /containers/bind9/restart
-                    ┌──────────▼──────────┐
-                    │  bind9 (ISC BIND)   │
-                    │  :53 (UDP/TCP)      │
-                    └──────────┬──────────┘
-                               │ reads
-                    ┌──────────▼──────────┐
-                    │  ./bind/config/      │
-                    │  named.conf          │
-                    │  db.* zone files     │
-                    └─────────────────────┘
+┌──────────────┐      ┌──────────────────────┐
+│   Browser    │─────▶│  bind-gui (Next.js)   │
+│  :3001       │      │  :3001                │
+└──────────────┘      └──────────┬───────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │  Record edits via        │
+                    │  nsupdate (RFC 2136)     │
+                    │  TSIG auth (RFC 2845)    │
+                    │  Port 53/TCP             │
+                    │                           │
+                    │  Zone lifecycle via       │
+                    │  rndc addzone/delzone     │
+                    │  Port 953/TCP             │
+                    └────────────┬────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │  bind9 (ISC BIND)       │
+                    │  :53 (UDP/TCP)          │
+                    │  :953 (TCP, controls)   │
+                    └────────────┬────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │  ./bind/config/          │
+                    │  named.conf              │
+                    │  db.* zone files (static)│
+                    │  bind-gui.key (TSIG)     │
+                    │  *.jnl (dynamic journal) │
+                    └─────────────────────────┘
 ```
+
+### How It Works
+
+1. You log into the web GUI and edit your DNS records in a table-based editor.
+2. The GUI computes a diff between the current records and your changes.
+3. The diff is sent as an **nsupdate (RFC 2136)** transaction — a DNS UPDATE message authenticated with a **TSIG key (RFC 2845)** shared between the containers.
+4. BIND9 applies the transaction: it journals the change, auto-bumps the SOA serial, and (with DNSSEC inline-signing enabled) re-signs the zone automatically.
+5. For **zone create / delete** operations, the GUI calls `rndc addzone` / `rndc delzone` over port 953 — no files are edited, no container is restarted.
+6. Zone files remain on disk as the static source of truth; dynamic journal files (`.jnl`) capture incremental changes.
 
 ## Tech Stack
 
@@ -35,22 +53,36 @@ Bind DNS GUI is a containerized web application that provides a graphical interf
 | **Styling** | Tailwind CSS + shadcn/ui primitives |
 | **Authentication** | next-auth v4 (Credentials provider, JWT sessions) |
 | **DNS Parsing** | Custom parser in `lib/dnsParser.ts` |
-| **Container Management** | Docker Engine API via Unix socket (`lib/restartContainer.ts`) |
+| **Dynamic Updates** | `nsupdate` (RFC 2136) with TSIG (RFC 2845) via Alpine `bind-tools` |
+| **Zone Lifecycle** | `rndc addzone / delzone / modzone` over TCP/953 |
+| **Container Management** | Docker Engine API via Unix socket (optional fallback, `lib/restartContainer.ts`) |
 | **Runtime** | Node.js 20 (Alpine Linux container) |
 | **DNS Server** | ISC BIND 9.18 |
 
 ## Key Design Decisions
 
-### Filesystem-Based Management
+### Dynamic Updates via RFC 2136 (nsupdate)
 
-The GUI reads and writes BIND zone files directly on the filesystem. This means:
-- No database required — your zone files **are** the source of truth
-- Compatible with existing BIND setups — just point it at your config directory
-- Changes are immediately visible to BIND after container restart
+The GUI does **not** write zone files for record edits. Instead, it sends DNS UPDATE messages (RFC 2136) authenticated with a shared TSIG key (RFC 2845). This means:
 
-### Docker Socket Integration
+- **No container restart needed** — BIND applies the update on the fly
+- **Automatic SOA serial bump** — BIND handles serial management
+- **DNSSEC-safe** — with `inline-signing yes`, BIND re-signs the zone automatically after each nsupdate
+- **Journaled** — each change is written to a `.jnl` journal file before being applied to the in-memory zone
 
-After saving zone changes, the GUI restarts the BIND9 container via the Docker Engine API. This eliminates the need for `rndc` configuration or SSH access into the BIND container.
+### Zone Lifecycle via rndc
+
+Zone create / delete / option-change operations go through `rndc addzone` / `delzone` / `modzone`:
+
+- No modification of `named.conf.local` — BIND persists the zone config in its own state
+- No container restart — changes take effect immediately
+- `rndc freeze / thaw` available for bulk-import or manual override scenarios
+
+### Hybrid Storage Model
+
+- **Static zone files** (`db.<domain>`) are the initial source of truth, created when a zone is first defined
+- **Record edits** are handled dynamically via nsupdate — the static file is read but never overwritten
+- **Journal files** (`db.<domain>.jnl`) capture the incremental change log between the static file and the live zone
 
 ### Authentication
 
@@ -58,14 +90,16 @@ Authentication uses next-auth with a credentials provider. Sessions are managed 
 
 ## API Routes
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/zones` | `GET` | List all zone files |
-| `/api/zones/[filename]` | `GET` | Get a zone file's parsed records |
-| `/api/zones/[filename]` | `PUT` | Save updated records to a zone file |
-| `/api/config/files` | `GET` | List config files (named.conf, etc.) |
-| `/api/version` | `GET` | Get application version |
-| `/api/auth/[...nextauth]` | `POST` | Authentication endpoints |
+| Route | Method | Auth | Description |
+|-------|--------|------|-------------|
+| `/api/zones` | `GET` | Yes | List all zone files with parsed record counts |
+| `/api/zones` | `POST` | Yes | Create a new zone (writes file + `rndc addzone`) |
+| `/api/zones/[filename]` | `GET` | Yes | Get a zone's parsed records and metadata |
+| `/api/zones/[filename]` | `PUT` | Yes | Diff+nsupdate records (RFC 2136) |
+| `/api/zones/[filename]` | `DELETE` | Yes | Delete a zone (`rndc delzone` + remove file) |
+| `/api/config/files` | `GET` | Yes | List config files (named.conf, etc.) |
+| `/api/version` | `GET` | Yes | Get application version |
+| `/api/auth/[...nextauth]` | `POST` | No | NextAuth authentication endpoints |
 
 ## Design System
 

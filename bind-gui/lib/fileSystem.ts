@@ -82,7 +82,7 @@ const NAMED_CONF_LOCAL = "named.conf.local";
 
 /** Generate the BIND zone block for a forward domain */
 function generateZoneBlock(domain: string, filePath: string): string {
-    return `zone "${domain}" {\n    type master;\n    file "${filePath}";\n    allow-update { none; };\n};`;
+    return `zone "${domain}" {\n    type master;\n    file "${filePath}";\n    allow-update { key "bind-gui-key"; };\n};`;
 }
 
 /** Register a new zone in named.conf.local (idempotent — skips if already present). Returns true on success. */
@@ -98,8 +98,8 @@ export function registerZoneInNamedConfLocal(domain: string): boolean {
         return true;
     }
 
-    // Build the zone block using absolute path matching what's already in the config
-    const filePath = `${CONFIG_DIR}/db.${domain}`;
+    // Build the zone block using BIND's filesystem perspective, not the GUI's
+    const filePath = `/etc/bind/db.${domain}`;
     const zoneBlock = generateZoneBlock(domain, filePath);
 
     // Append to end of file with proper spacing

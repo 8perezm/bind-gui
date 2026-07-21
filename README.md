@@ -32,7 +32,7 @@
 - **🔧 Record Management** — Add, edit, and delete DNS records: A, AAAA, CNAME, MX, TXT, PTR, NS, SOA.
 - **📂 Config Viewer** — Browse `named.conf` and other BIND configuration files in read-only mode.
 - **🔐 Authentication** — Password-protected access via environment variables. Simple, no database required.
-- **♻️ Auto-Restart** — Saves your zone changes and automatically restarts BIND9 via Docker API.
+- **♻️ Dynamic Updates (RFC 2136)** — Record edits go through nsupdate with TSIG authentication — no container restart needed, SOA serial bumps automatically.
 - **🎨 Monochrome Design** — Clean, distraction-free black-and-white interface that means business.
 - **🐳 Docker Native** — Ready-to-use Docker image on Docker Hub. Works with your existing BIND9 container.
 
@@ -70,8 +70,9 @@ services:
     ports:
       - "53:53/udp"
       - "53:53/tcp"
+      - "953:953/tcp"          # rndc control channel
     volumes:
-      - ./bind/config:/etc/bind:ro
+      - ./bind/config:/etc/bind:rw    # writable so BIND can create .jnl journal files
       - bind-cache:/var/cache/bind
     networks:
       - dns-net
@@ -88,8 +89,12 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - NEXTAUTH_URL=http://localhost:3001
       - CONFIG_DIR=/app/bind/config
+      - BIND_RNDC_HOST=bind9
+      - BIND_DNS_HOST=bind9
+      - TSIG_KEY_FILE=/etc/bind/bind-gui.key
     volumes:
       - ./bind/config:/app/bind/config:rw
+      - ./bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       bind9:
@@ -121,13 +126,23 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=changeme-to-something-strong
 ```
 
-### 5. Start everything
+### 5. Generate the TSIG key
+
+This key authenticates communication between the GUI and BIND9:
+
+```bash
+docker compose run --rm bind9 tsig-keygen -a hmac-sha256 bind-gui-key > bind/config/bind-gui.key
+```
+
+> **Security:** The key file (`bind/config/bind-gui.key`) is automatically excluded from Git via `.gitignore`.
+
+### 6. Start everything
 
 ```bash
 docker compose up -d
 ```
 
-### 6. Open the GUI
+### 7. Open the GUI
 
 Visit [**http://localhost:3001**](http://localhost:3001) and log in with your credentials.
 
@@ -169,12 +184,14 @@ Images are tagged with:
 
 ## 🧩 How It Works
 
-1. You log into the web GUI and edit your DNS records in a spreadsheet-like table.
-2. The GUI writes the changes directly to your BIND zone files on disk.
-3. The GUI signals BIND9 to reload via the Docker API — no SSH, no `rndc`, no fuss.
-4. Your DNS server picks up the changes immediately.
+1. You log into the web GUI and edit your DNS records in a table-based editor.
+2. The GUI computes a **diff** between the current records and your changes.
+3. The diff is sent as an **nsupdate (RFC 2136)** transaction — a DNS UPDATE message authenticated with a shared **TSIG key**.
+4. BIND9 applies the update immediately: it journals the change, auto-bumps the SOA serial, and (with DNSSEC inline-signing) re-signs the zone.
+5. For **creating or deleting zones**, the GUI uses `rndc addzone` / `rndc delzone` — no container restart needed.
+6. **No container restarts** are required for any zone operation. The Docker socket is retained only as a fallback for the version display.
 
-Your zone files remain plain text on disk — readable, backup-able, and portable. No lock-in.
+Your zone files remain on disk as the static source of truth; dynamic journal files (`.jnl`) capture incremental changes. No lock-in.
 
 ---
 

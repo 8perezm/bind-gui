@@ -9,12 +9,15 @@
 //   3. Run "docker compose restart bind9" to reload.
 
 // ── Forward Zone Example ────────────────────────────────────────────
-// Uncomment and customise for your domain:
+// Uncomment and customise for your domain.
+// The GUI now uses rndc addzone and nsupdate (RFC 2136) with TSIG,
+// so manual edits are only needed for zone declarations added outside
+// the GUI.
 /*
 zone "example.com" {
     type master;
     file "/etc/bind/db.example.com";
-    allow-update { none; };
+    allow-update { key "bind-gui-key"; };
 };
 */
 
@@ -26,6 +29,6 @@ zone "example.com" {
 zone "1.168.192.in-addr.arpa" {
     type master;
     file "/etc/bind/db.192.168.1";
-    allow-update { none; };
+    allow-update { key "bind-gui-key"; };
 };
 */

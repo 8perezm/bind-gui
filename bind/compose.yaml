@@ -6,11 +6,10 @@ services:
     ports:
       - "53:53/udp"
       - "53:53/tcp"
-      # RNDC control port
-      # - "127.0.0.1:953:953/tcp"
+      - "953:953/tcp"
     volumes:
-      - ./config:/etc/bind:ro # Read-only for config
-      - bind-cache:/var/cache/bind # Writable cache directory for BIND
+      - ./config:/etc/bind:rw
+      - bind-cache:/var/cache/bind
     environment:
       - TZ=UTC
     healthcheck:

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteZoneFile, readZoneFile, writeZoneFile, unregisterZoneFromNamedConfLocal } from "@/lib/fileSystem";
-import { parseZoneFile, serializeZoneFile } from "@/lib/dnsParser";
-import { restartDockerContainer } from "@/lib/restartContainer";
+import { deleteZoneFile, readZoneFile } from "@/lib/fileSystem";
+import { parseZoneFile } from "@/lib/dnsParser";
+import { diffRecords, opsToCommands } from "@/lib/dnsDiff";
+import { applyTransaction } from "@/lib/nsupdate";
+import { delZone, zoneStatus } from "@/lib/rndc";
 import type { DnsRecord } from "@/lib/dnsTypes";
-
-const BIND_CONTAINER_NAME = "bind9";
 
 export async function GET(
     _req: NextRequest,
@@ -33,33 +33,51 @@ export async function PUT(
     const body = await req.json();
     const records: DnsRecord[] = body.records ?? [];
 
-    // Read current file and rebuild with updated records
+    // Read current zone file to diff against the incoming records
     const rawContent = readZoneFile(filename);
     if (!rawContent) {
         return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
     const parsed = parseZoneFile(filename, rawContent);
-    parsed.records = records;
+    const currentRecords = parsed.records ?? [];
+    const zone = parsed.domain;
 
-    const serialized = serializeZoneFile(parsed);
-    const success = writeZoneFile(filename, serialized);
+    // Compute the minimal set of nsupdate operations
+    const ops = diffRecords(zone, currentRecords, records);
 
-    if (!success) {
-        return NextResponse.json({ error: "Write failed" }, { status: 500 });
+    if (ops.length === 0) {
+        return NextResponse.json({ success: true, applied: 0 });
     }
 
-    // Restart the BIND container so it picks up the updated zone file
-    const result = await restartDockerContainer(BIND_CONTAINER_NAME);
+    const commands = opsToCommands(ops);
 
-    if (!result.success) {
-        console.error(`Failed to restart BIND container: ${result.error}`);
+    try {
+        await applyTransaction(commands);
+    } catch (err) {
+        console.error(`nsupdate failed for ${filename}:`, err);
+        return NextResponse.json(
+            {
+                error: "Dynamic update failed. Check BIND logs for details.",
+                detail: err instanceof Error ? err.message : String(err),
+            },
+            { status: 500 },
+        );
+    }
+
+    // Fetch the new serial to confirm the update took effect
+    let newSerial: number | null = null;
+    try {
+        const status = await zoneStatus(zone);
+        newSerial = status.serial;
+    } catch {
+        // best-effort — serial is informational
     }
 
     return NextResponse.json({
         success: true,
-        containerRestarted: result.success,
-        containerError: result.error ?? null,
+        applied: ops.length,
+        serial: newSerial,
     });
 }
 
@@ -69,14 +87,28 @@ export async function DELETE(
 ) {
     const { filename } = await params;
     const domain = extractDomainFromFilename(filename);
-    const success = deleteZoneFile(filename);
 
-    if (!success) {
-        return NextResponse.json({ error: "Delete failed" }, { status: 500 });
+    // Remove the zone from the running BIND first via rndc
+    try {
+        await delZone(domain);
+    } catch (err) {
+        console.error(`rndc delzone failed for "${domain}":`, err);
+        return NextResponse.json(
+            {
+                error: "Failed to remove zone from BIND. Check that bind-gui.key exists and rndc can reach the bind9 container.",
+                detail: err instanceof Error ? err.message : String(err),
+            },
+            { status: 500 },
+        );
     }
 
-    // Also remove the zone from named.conf.local
-    unregisterZoneFromNamedConfLocal(domain);
+    // Remove the on-disk zone file
+    const fileRemoved = deleteZoneFile(filename);
+    if (!fileRemoved) {
+        console.warn(
+            `Zone file ${filename} not found or could not be deleted (zone was removed from BIND).`,
+        );
+    }
 
     return NextResponse.json({ success: true });
 }

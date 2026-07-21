@@ -10,6 +10,10 @@ The Bind DNS GUI is configured entirely through environment variables. Create a 
 | `ADMIN_USERNAME` | No | `admin` | Admin login username |
 | `ADMIN_PASSWORD` | **Yes** | — | Admin login password |
 | `NEXTAUTH_URL` | No | `http://localhost:3001` | Public URL of the GUI (change if behind a reverse proxy) |
+| `CONFIG_DIR` | No | `/app/bind/config` | Path to BIND config files (inside the GUI container) |
+| `BIND_RNDC_HOST` | No | `bind9` | Hostname of the BIND9 container for rndc connections (port 953) |
+| `BIND_DNS_HOST` | No | `bind9` | Hostname of the BIND9 container for nsupdate connections (port 53/TCP) |
+| `TSIG_KEY_FILE` | No | `/etc/bind/bind-gui.key` | Path to the TSIG key file for nsupdate authentication |
 
 ### Example `.env`
 
@@ -19,6 +23,16 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=your-strong-password-here
 NEXTAUTH_URL=http://localhost:3001
 ```
+
+### TSIG Key Provisioning
+
+After the first deployment, generate the TSIG key that allows the GUI to authenticate DNS UPDATE messages:
+
+```bash
+docker compose run --rm bind9 tsig-keygen -a hmac-sha256 bind-gui-key > bind/config/bind-gui.key
+```
+
+This creates `bind/config/bind-gui.key` which is automatically mounted into both containers. The file is excluded from Git via `.gitignore`.
 
 ## BIND Configuration Files
 
@@ -83,10 +97,29 @@ dns.example.com {
 }
 ```
 
-## Container Restart Behaviour
+## Dynamic Updates (RFC 2136)
 
-After saving changes to a zone file through the GUI, the application automatically restarts the `bind9` container via the Docker socket to apply the changes. This requires the Docker socket to be mounted into the GUI container (`/var/run/docker.sock:ro`).
+Record edits no longer require a container restart. The GUI sends **DNS UPDATE** messages to BIND9 via `nsupdate`, authenticated with a shared TSIG key:
 
-The API response includes two fields indicating the restart status:
-- `containerRestarted` — `true` if the restart was successful
-- `containerError` — error message if the restart failed
+- The update is applied immediately — no restart, no reload
+- BIND auto-bumps the SOA serial
+- Changes are journaled in `.jnl` files alongside the zone file
+- With DNSSEC inline-signing enabled, BIND re-signs the zone automatically after each update
+
+## Zone Lifecycle via rndc
+
+Creating or deleting a zone uses `rndc addzone` / `delzone` over TCP/953:
+
+- No `named.conf.local` edits — BIND manages its own state
+- No container restart — the zone appears or disappears from the running server immediately
+- Zone files are still written to disk (as static source of truth), but the running configuration is managed by BIND
+
+## API Response Format
+
+The PUT `/api/zones/[filename]` endpoint returns:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | Whether the update was accepted |
+| `applied` | number | Number of nsupdate operations applied |
+| `serial` | number \| null | New SOA serial after the update (if available) |

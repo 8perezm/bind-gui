@@ -15,6 +15,9 @@ FROM node:20-alpine AS production
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install bind-tools for nsupdate (RFC 2136) and rndc (zone lifecycle)
+RUN apk add --no-cache bind-tools
+
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 

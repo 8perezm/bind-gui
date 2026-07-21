@@ -7,8 +7,9 @@ services:
     ports:
       - "53:53/udp"
       - "53:53/tcp"
+      - "953:953/tcp"
     volumes:
-      - ./bind/config:/etc/bind:ro
+      - ./bind/config:/etc/bind:rw
       - bind-cache:/var/cache/bind
     environment:
       - TZ=UTC
@@ -34,8 +35,14 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
       - CONFIG_DIR=/app/bind/config
+      - BIND_RNDC_HOST=bind9
+      - BIND_DNS_HOST=bind9
+      - TSIG_KEY_FILE=/etc/bind/bind-gui.key
+      - RNDC_CONFIG=/etc/rndc.conf
     volumes:
       - ./bind/config:/app/bind/config:rw
+      - ./bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
+      - ./bind-gui/rndc.conf:/etc/rndc.conf:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
       bind9:

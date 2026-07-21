@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { listZoneFiles, readZoneFile, createZoneFile, registerZoneInNamedConfLocal } from "@/lib/fileSystem";
+import { listZoneFiles, readZoneFile, createZoneFile } from "@/lib/fileSystem";
 import { parseZoneFile, generateZoneFile } from "@/lib/dnsParser";
+import { addZone } from "@/lib/rndc";
 
 export async function GET() {
     const zoneFilenames = listZoneFiles();
@@ -79,15 +80,22 @@ export async function POST(request: Request) {
             );
         }
 
-        // Register the zone in named.conf.local so BIND recognizes it
-        const registered = registerZoneInNamedConfLocal(domain);
-        if (!registered) {
-            console.error(`Failed to register zone "${domain}" in named.conf.local`);
-            // Zone file exists but config wasn't updated — warn but don't fail hard
+        // Register the zone with the running BIND via rndc addzone
+        try {
+            await addZone(domain);
+        } catch (rndcErr) {
+            console.error(`rndc addzone failed for "${domain}":`, rndcErr);
+            return NextResponse.json(
+                {
+                    error: "Zone file created but BIND registration failed. Check that bind-gui.key exists and rndc can reach the bind9 container.",
+                    detail: rndcErr instanceof Error ? rndcErr.message : String(rndcErr),
+                },
+                { status: 500 },
+            );
         }
 
         return NextResponse.json(
-            { success: true, filename, domain, registered },
+            { success: true, filename, domain },
             { status: 201 }
         );
     } catch (err) {

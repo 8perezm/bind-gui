@@ -106,16 +106,18 @@ export default function EditZonePage() {
             });
             if (res.ok) {
                 const data = await res.json();
-                if (data.containerRestarted) {
-                    setMessage("Saved successfully · BIND container restarted");
-                } else if (data.containerError) {
-                    setMessage("Zone saved but BIND container restart failed");
+                if (data.applied !== undefined && data.applied > 0) {
+                    const serialMsg = data.serial ? ` · serial ${data.serial}` : "";
+                    setMessage(`Saved · ${data.applied} change(s) applied${serialMsg}`);
+                } else if (data.applied === 0) {
+                    setMessage("No changes to save");
                 } else {
                     setMessage("Saved successfully");
                 }
                 setTimeout(() => setMessage(null), 3000);
             } else {
-                setMessage("Failed to save. Check server logs.");
+                const err = await res.json().catch(() => ({}));
+                setMessage(err.error || "Failed to save. Check server logs.");
             }
         } catch {
             setMessage("Network error. Please try again.");
