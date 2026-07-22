@@ -41,14 +41,7 @@ export default function DashboardPage() {
                     Manage your Bind zone files. Select a zone to view and edit its records.
                 </p>
                 <div className="pt-2">
-                    <CreateZoneDialog
-                        onSuccess={fetchZones}
-                        trigger={
-                            <button className="inline-flex h-11 items-center border-2 border-black bg-black px-5 text-sm font-mono uppercase tracking-[0.3em] text-white transition-colors duration-INSTANT hover:bg-white hover:text-black">
-                                + Create Zone
-                            </button>
-                        }
-                    />
+                    <CreateZoneDialog onSuccess={fetchZones} />
                 </div>
             </section>
 

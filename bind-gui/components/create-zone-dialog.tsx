@@ -1,26 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
+import { ChevronDown, ChevronUp, Info } from "lucide-react";
+import Popover from "@/components/ui/popover";
 
 interface CreateZoneDialogProps {
-    trigger?: React.ReactNode;
-    open?: boolean;
-    onOpenChange?: (open: boolean) => void;
     onSuccess: () => void;
 }
 
-export default function CreateZoneDialog({
-    trigger = <Button variant="outline" size="sm">+ Create Zone</Button>,
-    open: controlledOpen,
-    onOpenChange: controlledOnOpenChange,
-    onSuccess,
-}: CreateZoneDialogProps) {
-    const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+export default function CreateZoneDialog({ onSuccess }: CreateZoneDialogProps) {
+    const [expanded, setExpanded] = useState(false);
     const [domain, setDomain] = useState("");
     const [primaryNs, setPrimaryNs] = useState("ns1.");
     const [adminEmail, setAdminEmail] = useState("admin.");
@@ -29,14 +22,9 @@ export default function CreateZoneDialog({
     const [inlineSigning, setInlineSigning] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
+    const formId = useId();
 
-    const isControlled = controlledOpen !== undefined;
-    const open = isControlled ? controlledOpen : uncontrolledOpen;
-    const setOpen = controlledOnOpenChange ?? setUncontrolledOpen;
-
-    useEffect(() => {
-        if (open) reset();
-    }, [open]);
+    const fullPrimaryNs = `${primaryNs}${domain}.`;
 
     function reset() {
         setDomain("");
@@ -49,16 +37,22 @@ export default function CreateZoneDialog({
         setSaving(false);
     }
 
+    function toggleExpanded() {
+        if (expanded) {
+            setExpanded(false);
+            reset();
+        } else {
+            setExpanded(true);
+            setError(null);
+        }
+    }
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!domain.trim()) return;
 
-        // The primary NS always has the form `PREFIX.domain.` (e.g.
-        // `ns1.example.com.`). Strip the trailing dot and check if
-        // it ends with the zone apex — that means it's an in-bailiwick
-        // NS, and BIND *requires* a matching A/AAAA glue record or it
-        // silently refuses to load the zone.
-        const fullPrimaryNs = `${primaryNs}${domain}.`;
+        // Check whether the primary NS lives inside the zone being
+        // created — if so BIND needs a glue A record.
         const nsLabel = fullPrimaryNs.endsWith(".")
             ? fullPrimaryNs.slice(0, -1)
             : fullPrimaryNs;
@@ -66,8 +60,9 @@ export default function CreateZoneDialog({
         const isInBailiwick = nsLabel === apex || nsLabel.endsWith(`.${apex}`);
         if (isInBailiwick && !nameserverIp.trim()) {
             setError(
-                `The nameserver ${fullPrimaryNs} is in-bailiwick (inside the zone itself). ` +
-                "BIND requires a glue A record for it. Provide a Nameserver IP below.",
+                `The nameserver ${fullPrimaryNs} is part of the zone you are creating. ` +
+                "BIND requires an IP address for it — like a contact needs a phone number. " +
+                "Fill in the IP field above and try again.",
             );
             return;
         }
@@ -101,7 +96,7 @@ export default function CreateZoneDialog({
                 return;
             }
 
-            setOpen(false);
+            setExpanded(false);
             reset();
             onSuccess();
         } catch (err) {
@@ -112,102 +107,137 @@ export default function CreateZoneDialog({
     }
 
     return (
-        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
-            {!isControlled && <DialogTrigger asChild>{trigger}</DialogTrigger>}
-            <DialogContent className="max-w-md">
-                <DialogTitle className="font-heading text-3xl tracking-tight mb-2">
-                    Create New Zone
-                </DialogTitle>
-                <DialogDescription className="text-mutedForeground text-sm mb-6">
-                    Create a new authoritative DNS zone. The zone file is written to the
-                    shared config directory and registered in named.conf.local.
-                </DialogDescription>
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    <Field label="Domain Name">
-                        <Input
-                            value={domain}
-                            onChange={(e) => setDomain(e.target.value)}
-                            placeholder="example.com"
-                            required
-                            autoFocus
-                        />
-                    </Field>
+        <div>
+            {/* Toggle button */}
+            <button
+                type="button"
+                onClick={toggleExpanded}
+                className="inline-flex h-11 items-center gap-2 border-2 border-black bg-black px-5 text-sm font-mono uppercase tracking-[0.3em] text-white transition-colors duration-INSTANT hover:bg-white hover:text-black"
+            >
+                {expanded ? "Close" : "+ Create Zone"}
+                {expanded ? <ChevronUp size={16} strokeWidth={2} /> : <ChevronDown size={16} strokeWidth={2} />}
+            </button>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <Field label="Primary NS Prefix">
-                            <Input
-                                value={primaryNs}
-                                onChange={(e) => setPrimaryNs(e.target.value)}
-                                placeholder="ns1."
-                            />
-                        </Field>
-                        <Field label="Admin Email Prefix">
-                            <Input
-                                value={adminEmail}
-                                onChange={(e) => setAdminEmail(e.target.value)}
-                                placeholder="admin."
-                            />
-                        </Field>
-                    </div>
-
-                    <p className="text-xs text-mutedForeground font-mono uppercase tracking-wide">
-                        SOA: {primaryNs}{domain}. | Rfc822: {adminEmail}{domain}.
+            {/* Inline form */}
+            {expanded && (
+                <div className="mt-6 border-2 border-black bg-white p-6 md:p-8">
+                    <h2 className="font-heading text-3xl tracking-tight mb-1">
+                        Create New Zone
+                    </h2>
+                    <p className="text-mutedForeground text-sm mb-6">
+                        Create a new authoritative DNS zone. The zone file is written to the
+                        shared config directory and registered in named.conf.local.
                     </p>
 
-                    <Field label="TTL">
-                        <Input
-                            type="text"
-                            inputMode="numeric"
-                            value={ttl}
-                            onChange={(e) => setTtl(e.target.value)}
-                            placeholder="86400"
-                        />
-                    </Field>
+                    <form id={formId} onSubmit={handleSubmit} className="space-y-6 max-w-5xl">
+                        <Field label="Domain Name">
+                            <Input
+                                value={domain}
+                                onChange={(e) => setDomain(e.target.value)}
+                                placeholder="example.com"
+                                required
+                                autoFocus
+                            />
+                        </Field>
 
-                    <Field label={`${primaryNs}${domain}.  IP  (optional, glue A record)`}>
-                        <Input
-                            value={nameserverIp}
-                            onChange={(e) => setNameserverIp(e.target.value)}
-                            placeholder="192.0.2.1"
-                        />
-                    </Field>
-                    <p className="text-xs text-mutedForeground font-mono uppercase tracking-wide -mt-3">
-                        Required if the nameserver is in-bailiwick — BIND will not load
-                        the zone otherwise.
-                    </p>
-
-                    <div className="flex items-center justify-between pt-2">
-                        <div>
-                            <Label>DNSSEC (inline-signing)</Label>
-                            <p className="text-xs text-mutedForeground font-mono mt-1">
-                                BIND signs the zone automatically. Publish the DS record at your registrar.
-                            </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                            <Field label="Primary NS Prefix">
+                                <Input
+                                    value={primaryNs}
+                                    onChange={(e) => setPrimaryNs(e.target.value)}
+                                    placeholder="ns1."
+                                />
+                            </Field>
+                            <Field label="Admin Email Prefix">
+                                <Input
+                                    value={adminEmail}
+                                    onChange={(e) => setAdminEmail(e.target.value)}
+                                    placeholder="admin."
+                                />
+                            </Field>
                         </div>
-                        <Switch
-                            checked={inlineSigning}
-                            onCheckedChange={setInlineSigning}
-                        />
-                    </div>
 
-                    {error && (
-                        <p className="text-red-600 font-mono text-sm uppercase tracking-wider border-l-2 border-red-600 pl-3">
-                            {error}
+                        <p className="text-xs text-mutedForeground font-mono uppercase tracking-wide -mt-3">
+                            SOA: {fullPrimaryNs} | Rfc822: {adminEmail}{domain}.
                         </p>
-                    )}
 
-                    <div className="flex gap-3 pt-4 border-t-2 border-black mt-6">
-                        <Button type="submit" disabled={saving}>
-                            {saving ? "Creating..." : "Create Zone"}
-                        </Button>
-                        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-                    </div>
-                </form>
-            </DialogContent>
-        </Dialog>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                            <Field label="TTL">
+                                <Input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={ttl}
+                                    onChange={(e) => setTtl(e.target.value)}
+                                    placeholder="86400"
+                                />
+                            </Field>
+                            <Field
+                                label={
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {fullPrimaryNs}  IP
+                                        <Popover
+                                            trigger={<Info size={14} strokeWidth={2.5} className="text-amber-700 cursor-pointer" />}
+                                            align="end"
+                                        >
+                                            <p className="font-mono font-bold uppercase tracking-wide text-amber-900 mb-1">
+                                                Why is this needed?
+                                            </p>
+                                            <p className="text-amber-800">
+                                                Your nameserver <strong>{fullPrimaryNs}</strong> lives inside the zone you&apos;re
+                                                creating — BIND needs an address for it, just like a contact in your phone needs a
+                                                phone number. Without it, BIND will silently reject the zone.
+                                            </p>
+                                            <p className="text-amber-800 mt-1">
+                                                If you change the &quot;Primary NS Prefix&quot; above to point to an external
+                                                nameserver (e.g. <strong>ns1.cloudflare.com.</strong>), this IP is no longer needed.
+                                            </p>
+                                        </Popover>
+                                    </span>
+                                }
+                            >
+                                <Input
+                                    value={nameserverIp}
+                                    onChange={(e) => setNameserverIp(e.target.value)}
+                                    placeholder="192.0.2.1"
+                                />
+                            </Field>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2">
+                            <div>
+                                <Label>DNSSEC (inline-signing)</Label>
+                                <p className="text-xs text-mutedForeground font-mono mt-1">
+                                    BIND signs the zone automatically. Publish the DS record at your registrar.
+                                </p>
+                            </div>
+                            <Switch
+                                checked={inlineSigning}
+                                onCheckedChange={setInlineSigning}
+                            />
+                        </div>
+
+                        {error && (
+                            <p className="text-red-600 font-mono text-sm uppercase tracking-wider border-l-2 border-red-600 pl-3">
+                                {error}
+                            </p>
+                        )}
+
+                        <div className="flex gap-3 pt-4 border-t-2 border-black mt-6">
+                            <Button type="submit" disabled={saving}>
+                                {saving ? "Creating..." : "Create Zone"}
+                            </Button>
+                            <Button type="button" variant="ghost" onClick={toggleExpanded}>
+                                Cancel
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+            )}
+        </div>
     );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string | React.ReactNode; children: React.ReactNode }) {
     return (
         <div>
             <Label>{label}</Label>
