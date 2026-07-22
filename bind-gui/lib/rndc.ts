@@ -231,11 +231,14 @@ function parseZoneStatus(output: string): ZoneStatus {
 export interface ServerStatus {
     version: string;
     bootTime: string | null;
-    lastReconfigTime: string | null;
-    zoneCount: number | null;
-    zoneMaximum: number | null;
-    recursiveClients: number | null;
-    tcpClients: number | null;
+    lastConfigured: string | null;
+    numberOfZones: string | null;
+    debugLevel: number | null;
+    xfersRunning: number | null;
+    xfersDeferred: number | null;
+    recursiveClients: string | null;
+    tcpClients: string | null;
+    tcpHighWater: number | null;
     /** Raw key-value pairs for any field we don't explicitly parse. */
     raw: Record<string, string>;
 }
@@ -244,6 +247,13 @@ export interface ServerStatus {
 export async function serverStatus(): Promise<ServerStatus> {
     const result = await runRndc(["status"]);
     return parseServerStatus(result.output);
+}
+
+function parseNumber(val: string | undefined): number | null {
+    if (val === undefined || val === "") return null;
+    // Handle values like "0/900/1000" or "0/150" — extract first number
+    const num = parseInt(val.split("/")[0], 10);
+    return isNaN(num) ? null : num;
 }
 
 function parseServerStatus(output: string): ServerStatus {
@@ -261,11 +271,14 @@ function parseServerStatus(output: string): ServerStatus {
     return {
         version: raw["version"] || "",
         bootTime: raw["boot time"] || null,
-        lastReconfigTime: raw["last reconfig time"] || null,
-        zoneCount: raw["zone count"] ? parseInt(raw["zone count"], 10) : null,
-        zoneMaximum: raw["zone maximum"] ? parseInt(raw["zone maximum"], 10) : null,
-        recursiveClients: raw["recursive clients"] ? parseInt(raw["recursive clients"], 10) : null,
-        tcpClients: raw["tcp clients"] ? parseInt(raw["tcp clients"], 10) : null,
+        lastConfigured: raw["last configured"] || raw["last reconfig time"] || null,
+        numberOfZones: raw["number of zones"] || null,
+        debugLevel: parseNumber(raw["debug level"]),
+        xfersRunning: parseNumber(raw["xfers running"]),
+        xfersDeferred: parseNumber(raw["xfers deferred"]),
+        recursiveClients: raw["recursive clients"] || null,
+        tcpClients: raw["tcp clients"] || null,
+        tcpHighWater: parseNumber(raw["TCP high-water"]),
         raw,
     };
 }

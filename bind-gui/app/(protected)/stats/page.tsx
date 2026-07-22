@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import type {
     StatsBundle,
     ZoneStatsEntry,
-    StatsCounter,
+    CounterMap,
 } from "@/lib/stats";
 
 // ── Page ───────────────────────────────────────────────────────────
@@ -99,6 +99,19 @@ export default function StatsPage() {
                 </p>
             )}
 
+            {/* ── Per-Zone Statistics ─────────────────────────────── */}
+            {stats?.zones && stats.zones.length > 0 && (
+                <section>
+                    <h2 className="font-heading text-2xl tracking-tight mb-4 uppercase">
+                        Per-Zone Statistics
+                    </h2>
+                    <p className="text-mutedForeground font-mono text-xs uppercase tracking-widest mb-4">
+                        Click column headers to sort. Requires <code className="bg-muted px-1">zone-statistics full;</code> in named.conf.options.
+                    </p>
+                    <ZoneStatsTable zones={stats.zones} />
+                </section>
+            )}
+
             {/* ── Server Status ────────────────────────────────────── */}
             {status && (
                 <section>
@@ -112,39 +125,43 @@ export default function StatsPage() {
                             value={status.bootTime ?? "—"}
                         />
                         <DetailBox
-                            label="Zone Count"
-                            value={status.zoneCount?.toString() ?? "—"}
+                            label="Zones"
+                            value={status.numberOfZones ?? "—"}
                         />
                         <DetailBox
-                            label="Zone Maximum"
-                            value={status.zoneMaximum?.toString() ?? "—"}
+                            label="Debug Level"
+                            value={status.debugLevel?.toString() ?? "—"}
                         />
                         <DetailBox
                             label="Recursive Clients"
-                            value={status.recursiveClients?.toString() ?? "—"}
+                            value={status.recursiveClients ?? "—"}
                         />
                         <DetailBox
                             label="TCP Clients"
-                            value={status.tcpClients?.toString() ?? "—"}
+                            value={status.tcpClients ?? "—"}
                         />
                         <DetailBox
-                            label="Last Reconfig"
-                            value={status.lastReconfigTime ?? "—"}
+                            label="Last Configured"
+                            value={status.lastConfigured ?? "—"}
                         />
                         <DetailBox
                             label="Xfers Running"
-                            value={
-                                status.raw["transfers running"] ??
-                                status.raw["xfers running"] ??
-                                "—"
-                            }
+                            value={status.xfersRunning?.toString() ?? "—"}
+                        />
+                        <DetailBox
+                            label="Xfers Deferred"
+                            value={status.xfersDeferred?.toString() ?? "—"}
+                        />
+                        <DetailBox
+                            label="TCP High-Water"
+                            value={status.tcpHighWater?.toString() ?? "—"}
                         />
                     </div>
                 </section>
             )}
 
             {/* ── Server Counters ──────────────────────────────────── */}
-            {stats?.server && stats.server.counters.length > 0 && (
+            {stats && Object.keys(stats.serverCounters).length > 0 && (
                 <section>
                     <h2 className="font-heading text-2xl tracking-tight mb-4 uppercase">
                         Server Counters
@@ -154,44 +171,71 @@ export default function StatsPage() {
                     </p>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <DetailBox
-                            label="Queries In"
-                            value={formatCounter(stats.server.counters, "queries-in")}
+                            label="Requests (IPv4)"
+                            value={fmt(stats.serverCounters.Requestv4)}
                         />
                         <DetailBox
-                            label="Queries Out"
-                            value={formatCounter(stats.server.counters, "queries-out")}
+                            label="Requests (TCP)"
+                            value={fmt(stats.serverCounters.ReqTCP)}
                         />
                         <DetailBox
-                            label="TCP Connections"
-                            value={formatCounter(stats.server.counters, "tcp-connections")}
+                            label="Responses"
+                            value={fmt(stats.serverCounters.Response)}
                         />
                         <DetailBox
-                            label="UDP Receives"
-                            value={formatCounter(stats.server.counters, "udp-receives")}
+                            label="EDNS0"
+                            value={fmt(stats.serverCounters.ReqEdns0)}
                         />
                         <DetailBox
-                            label="Auth Queries"
-                            value={
-                                formatCounter(stats.server.counters, "auth-queries") ??
-                                formatCounter(stats.server.counters, "QryAuthAns") ??
-                                "—"
-                            }
+                            label="Auth Answers"
+                            value={fmt(stats.serverCounters.QryAuthAns)}
                         />
                         <DetailBox
                             label="Recursive Queries"
-                            value={
-                                formatCounter(stats.server.counters, "recursive-queries") ??
-                                formatCounter(stats.server.counters, "QryRecAns") ??
-                                "—"
-                            }
+                            value={fmt(stats.serverCounters.QryRecursion)}
                         />
                         <DetailBox
                             label="NXDOMAIN"
-                            value={formatCounter(stats.server.counters, "QryNXDOMAIN") ?? "—"}
+                            value={fmt(stats.serverCounters.QryNXDOMAIN)}
                         />
                         <DetailBox
                             label="SERVFAIL"
-                            value={formatCounter(stats.server.counters, "QrySERVFAIL") ?? "—"}
+                            value={fmt(stats.serverCounters.QrySERVFAIL)}
+                        />
+                        <DetailBox
+                            label="TCP High-Water"
+                            value={fmt(stats.serverCounters.TCPConnHighWater)}
+                        />
+                        <DetailBox
+                            label="Cookies In"
+                            value={fmt(stats.serverCounters.CookieIn)}
+                        />
+                    </div>
+                </section>
+            )}
+
+            {/* ── Response Rcodes ──────────────────────────────────── */}
+            {stats && Object.keys(stats.raw.rcodes || {}).length > 0 && (
+                <section>
+                    <h2 className="font-heading text-2xl tracking-tight mb-4 uppercase">
+                        Response Codes
+                    </h2>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <DetailBox
+                            label="NOERROR"
+                            value={fmt((stats.raw.rcodes as CounterMap)?.["NOERROR"])}
+                        />
+                        <DetailBox
+                            label="NXDOMAIN"
+                            value={fmt((stats.raw.rcodes as CounterMap)?.["NXDOMAIN"])}
+                        />
+                        <DetailBox
+                            label="SERVFAIL"
+                            value={fmt((stats.raw.rcodes as CounterMap)?.["SERVFAIL"])}
+                        />
+                        <DetailBox
+                            label="REFUSED"
+                            value={fmt((stats.raw.rcodes as CounterMap)?.["REFUSED"])}
                         />
                     </div>
                 </section>
@@ -220,7 +264,40 @@ export default function StatsPage() {
                             label="Context Size"
                             value={formatBytes(stats.memory.contextSize)}
                         />
+                        <DetailBox
+                            label="Lost"
+                            value={formatBytes(stats.memory.lost)}
+                        />
                     </div>
+                    {stats.memory.contexts.length > 0 && (
+                        <details className="mt-4 group">
+                            <summary className="font-mono text-xs uppercase tracking-widest cursor-pointer hover:underline">
+                                Per-Context Breakdown ({stats.memory.contexts.length})
+                            </summary>
+                            <div className="mt-3 overflow-x-auto border-2 border-black">
+                                <table className="w-full font-mono text-sm">
+                                    <thead>
+                                        <tr className="border-b-2 border-black bg-muted">
+                                            <Th>Context</Th>
+                                            <Th>Total</Th>
+                                            <Th>In Use</Th>
+                                            <Th>Malloced</Th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {stats.memory.contexts.map((ctx, i) => (
+                                            <tr key={i} className="border-b border-black/10">
+                                                <Td>{ctx.name}</Td>
+                                                <Td className="text-right tabular-nums">{formatBytes(ctx.total)}</Td>
+                                                <Td className="text-right tabular-nums">{formatBytes(ctx.inuse)}</Td>
+                                                <Td className="text-right tabular-nums">{formatBytes(ctx.malloced)}</Td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    )}
                 </section>
             )}
 
@@ -234,53 +311,26 @@ export default function StatsPage() {
                         <table className="w-full font-mono text-sm">
                             <thead>
                                 <tr className="border-b-2 border-black bg-muted">
-                                    <Th>Task</Th>
-                                    <Th>Counter</Th>
-                                    <Th>Value</Th>
+                                    <Th>Name</Th>
+                                    <Th>State</Th>
+                                    <Th>Refs</Th>
+                                    <Th>Quantum</Th>
+                                    <Th>Events</Th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {stats.tasks.map((task, ti) =>
-                                    task.counters.length > 0
-                                        ? task.counters.map((c, ci) => (
-                                            <tr
-                                                key={`${ti}-${ci}`}
-                                                className="border-b border-black/10"
-                                            >
-                                                <Td>
-                                                    {ci === 0 ? task.name : ""}
-                                                </Td>
-                                                <Td>{c.name}</Td>
-                                                <Td className="text-right tabular-nums">
-                                                    {c.value.toLocaleString()}
-                                                </Td>
-                                            </tr>
-                                        ))
-                                        : (
-                                            <tr key={ti} className="border-b border-black/10">
-                                                <Td>{task.name}</Td>
-                                                <Td colSpan={2} className="text-mutedForeground">
-                                                    No counters
-                                                </Td>
-                                            </tr>
-                                        ),
-                                )}
+                                {stats.tasks.map((task, i) => (
+                                    <tr key={task.id || i} className="border-b border-black/10 hover:bg-muted/50 transition-colors">
+                                        <Td>{task.name}</Td>
+                                        <Td>{task.state}</Td>
+                                        <Td className="text-right tabular-nums">{task.references}</Td>
+                                        <Td className="text-right tabular-nums">{task.quantum}</Td>
+                                        <Td className="text-right tabular-nums">{task.events}</Td>
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
                     </div>
-                </section>
-            )}
-
-            {/* ── Per-Zone Statistics ─────────────────────────────── */}
-            {stats?.zones && stats.zones.length > 0 && (
-                <section>
-                    <h2 className="font-heading text-2xl tracking-tight mb-4 uppercase">
-                        Per-Zone Statistics
-                    </h2>
-                    <p className="text-mutedForeground font-mono text-xs uppercase tracking-widest mb-4">
-                        Click column headers to sort. Requires <code className="bg-muted px-1">zone-statistics full;</code> in named.conf.options.
-                    </p>
-                    <ZoneStatsTable zones={stats.zones} />
                 </section>
             )}
 
@@ -308,23 +358,17 @@ export default function StatsPage() {
 
 // ── Sortable Per-Zone Table ─────────────────────────────────────────
 
-type SortField = "zone" | "type" | "serial" | keyof typeof COUNTER_LABELS;
+type SortField = "zone" | "type" | "serial" | keyof typeof RCODE_LABELS;
 type SortDir = "asc" | "desc";
 
-const COUNTER_LABELS = {
-    "QrySuccess": "Queries",
-    "QryAuthAns": "Auth Ans",
-    "QryNxrrset": "NXRRSet",
-    "QryNXDOMAIN": "NXDOMAIN",
-    "QrySERVFAIL": "SERVFAIL",
-    "QryDuplicate": "Dup Qry",
-    "QryDropped": "Qry Drop",
-    "NotifyIn": "Notify In",
-    "NotifyOut": "Notify Out",
-    "XfrReqDone": "IXFR Req",
-    "XfrReqDoneAXFR": "AXFR Req",
-    "UpdateReq": "Update Req",
-    "UpdateRej": "Update Rej",
+const RCODE_LABELS = {
+    QrySuccess: "Success",
+    QryAuthAns: "Auth Ans",
+    QryNxrrset: "NXRRSet",
+    QryNXDOMAIN: "NXDOMAIN",
+    QrySERVFAIL: "SERVFAIL",
+    QryUDP: "UDP",
+    QryTCP: "TCP",
 } as const;
 
 function ZoneStatsTable({ zones }: { zones: ZoneStatsEntry[] }) {
@@ -340,8 +384,8 @@ function ZoneStatsTable({ zones }: { zones: ZoneStatsEntry[] }) {
         } else if (sortField === "serial") {
             cmp = (a.serial ?? 0) - (b.serial ?? 0);
         } else {
-            const va = findCounterVal(a.counters, sortField);
-            const vb = findCounterVal(b.counters, sortField);
+            const va = a.rcodes[sortField] ?? 0;
+            const vb = b.rcodes[sortField] ?? 0;
             cmp = va - vb;
         }
         return sortDir === "asc" ? cmp : -cmp;
@@ -356,7 +400,7 @@ function ZoneStatsTable({ zones }: { zones: ZoneStatsEntry[] }) {
         }
     }
 
-    const counterKeys = Object.keys(COUNTER_LABELS) as (keyof typeof COUNTER_LABELS)[];
+    const counterKeys = Object.keys(RCODE_LABELS) as (keyof typeof RCODE_LABELS)[];
 
     const SortIcon = ({ field }: { field: SortField }) => {
         if (sortField !== field) return <span className="ml-1 opacity-20">↕</span>;
@@ -379,7 +423,7 @@ function ZoneStatsTable({ zones }: { zones: ZoneStatsEntry[] }) {
                         </ThSort>
                         {counterKeys.map((key) => (
                             <ThSort key={key} onClick={() => toggleSort(key)}>
-                                {COUNTER_LABELS[key]} <SortIcon field={key} />
+                                {RCODE_LABELS[key]} <SortIcon field={key} />
                             </ThSort>
                         ))}
                     </tr>
@@ -397,7 +441,7 @@ function ZoneStatsTable({ zones }: { zones: ZoneStatsEntry[] }) {
                             </Td>
                             {counterKeys.map((key) => (
                                 <Td key={key} className="text-right tabular-nums">
-                                    {findCounterVal(zone.counters, key).toLocaleString()}
+                                    {(zone.rcodes[key] ?? 0).toLocaleString()}
                                 </Td>
                             ))}
                         </tr>
@@ -408,16 +452,11 @@ function ZoneStatsTable({ zones }: { zones: ZoneStatsEntry[] }) {
     );
 }
 
-function findCounterVal(counters: StatsCounter[], name: string): number {
-    const found = counters.find((c) => c.name === name);
-    return found ? found.value : 0;
-}
-
 // ── Helpers ─────────────────────────────────────────────────────────
 
-function formatCounter(counters: StatsCounter[], name: string): string {
-    const found = counters.find((c) => c.name === name);
-    return found ? found.value.toLocaleString() : "—";
+function fmt(val: number | undefined | null): string {
+    if (val === undefined || val === null) return "—";
+    return val.toLocaleString();
 }
 
 function formatBytes(bytes: number | null): string {

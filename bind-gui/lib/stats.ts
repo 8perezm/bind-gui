@@ -3,6 +3,11 @@
 // Fetches JSON statistics from BIND's statistics-channels HTTP endpoint
 // (port 8953, not published to host — Docker-network-scoped only).
 // Composes the HTTP JSON data with `rndc status` for a full picture.
+//
+// BIND JSON statistics schema (v1.7, BIND 9.18):
+//   Top-level keys: nsstats, views._default.zones, memory, taskmgr.tasks,
+//   sockstats, traffic, opcodes, rcodes, qtypes, zonestats.
+//   No nested ns.stats.server wrapper — everything is flat.
 
 import { serverStatus, type ServerStatus } from "@/lib/rndc";
 
@@ -23,22 +28,23 @@ export class StatsUnavailableError extends Error {
 
 // ── Typed interfaces for the BIND statistics JSON ──────────────────
 
-export interface StatsCounter {
-    name: string;
-    value: number;
-}
-
-export interface ServerStats {
-    counters: StatsCounter[];
-    raw?: Record<string, unknown>;
-}
+/** Flat key-value map — e.g. { QrySuccess: 71, Requestv4: 138, ... } */
+export type CounterMap = Record<string, number>;
 
 export interface MemorySummary {
     totalUse: number | null;
     inUse: number | null;
     malloced: number | null;
     contextSize: number | null;
-    raw?: Record<string, unknown>;
+    lost: number | null;
+    contexts: MemoryContext[];
+}
+
+export interface MemoryContext {
+    name: string;
+    total: number;
+    inuse: number;
+    malloced: number;
 }
 
 export interface ZoneStatsEntry {
@@ -46,19 +52,39 @@ export interface ZoneStatsEntry {
     class: string;
     serial: number | null;
     type: string;
-    counters: StatsCounter[];
+    /** Per-zone response-code counters like { QrySuccess: 9, ... } */
+    rcodes: CounterMap;
+    /** Per-zone query-type counters like { A: 9, AAAA: 11, ... } */
+    qtypes: CounterMap;
 }
 
 export interface TaskEntry {
+    id: string;
     name: string;
-    counters: StatsCounter[];
+    references: number;
+    state: string;
+    quantum: number;
+    events: number;
+}
+
+export interface SocketStats {
+    counters: CounterMap;
 }
 
 export interface BindStatistics {
-    server: ServerStats;
+    /** Server-wide counters (from `nsstats`). */
+    serverCounters: CounterMap;
+    /** Aggregate zone counters (from `zonestats`). */
+    zoneCounters: CounterMap;
+    /** Memory summary + per-context breakdown. */
     memory: MemorySummary;
+    /** User-configured zones (type=primary) with optional per-zone counters. */
     zones: ZoneStatsEntry[];
+    /** Task manager tasks. */
     tasks: TaskEntry[];
+    /** Socket stats. */
+    socketStats: SocketStats;
+    /** Whole raw JSON for debugging. */
     raw: Record<string, unknown>;
 }
 
@@ -71,13 +97,6 @@ export interface StatsBundle {
 
 // ── Fetch helpers ──────────────────────────────────────────────────
 
-/**
- * Fetch the raw JSON statistics document from BIND's statistics-channels
- * endpoint. Returns the full parsed JSON (any shape).
- *
- * Throws `StatsUnavailableError` if the endpoint is unreachable or
- * returns a non-200 status.
- */
 async function fetchStatsJson(
     path = "/json/v1",
 ): Promise<Record<string, unknown>> {
@@ -113,87 +132,99 @@ async function fetchStatsJson(
     }
 }
 
-// ── Parsers ────────────────────────────────────────────────────────
+// ── Parsers (BIND 9.18 JSON stats v1.7) ───────────────────────────
 
-function extractCounters(obj: unknown): StatsCounter[] {
-    if (!obj || typeof obj !== "object") return [];
-    const arr = (obj as Record<string, unknown>)["counter"];
-    if (!Array.isArray(arr)) return [];
-    return arr
-        .filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null)
-        .map((c) => ({
-            name: String(c["name"] ?? ""),
-            value: Number(c["value"] ?? 0),
-        }))
-        .filter((c) => c.name !== "");
+function asRecord(obj: unknown): Record<string, unknown> {
+    return (obj || {}) as Record<string, unknown>;
 }
 
-function parseServerStats(serverObj: unknown): ServerStats {
-    const raw = (serverObj as Record<string, unknown>) ?? {};
-    return {
-        counters: extractCounters(raw),
-        raw: raw as Record<string, unknown>,
-    };
-}
-
-function parseMemorySummary(memObj: unknown): MemorySummary {
-    const raw = (memObj as Record<string, unknown>) ?? {};
-    const summary = raw["summary"] as Record<string, unknown> | undefined;
-    if (!summary || typeof summary !== "object") {
-        return { totalUse: null, inUse: null, malloced: null, contextSize: null, raw: undefined };
+function parseCounterMap(obj: unknown): CounterMap {
+    const raw = asRecord(obj);
+    const map: CounterMap = {};
+    for (const [key, val] of Object.entries(raw)) {
+        if (typeof val === "number") {
+            map[key] = val;
+        }
     }
+    return map;
+}
+
+function parseMemory(json: Record<string, unknown>): MemorySummary {
+    const mem = asRecord(json["memory"]);
     return {
-        totalUse: typeof summary["TotalUse"] === "number" ? (summary["TotalUse"] as number) : null,
-        inUse: typeof summary["InUse"] === "number" ? (summary["InUse"] as number) : null,
-        malloced: typeof summary["Malloced"] === "number" ? (summary["Malloced"] as number) : null,
-        contextSize: typeof summary["ContextSize"] === "number" ? (summary["ContextSize"] as number) : null,
-        raw: summary as Record<string, unknown>,
+        totalUse: typeof mem["TotalUse"] === "number" ? (mem["TotalUse"] as number) : null,
+        inUse: typeof mem["InUse"] === "number" ? (mem["InUse"] as number) : null,
+        malloced: typeof mem["Malloced"] === "number" ? (mem["Malloced"] as number) : null,
+        contextSize: typeof mem["ContextSize"] === "number" ? (mem["ContextSize"] as number) : null,
+        lost: typeof mem["Lost"] === "number" ? (mem["Lost"] as number) : null,
+        contexts: parseMemoryContexts(mem["contexts"]),
     };
 }
 
-function parseZones(zonesObj: unknown): ZoneStatsEntry[] {
-    if (!zonesObj || typeof zonesObj !== "object") return [];
-    const raw = zonesObj as Record<string, unknown>;
-    const zones = raw["zone"];
+function parseMemoryContexts(ctxArr: unknown): MemoryContext[] {
+    if (!Array.isArray(ctxArr)) return [];
+    return ctxArr.map((c: unknown) => {
+        const ctx = asRecord(c);
+        return {
+            name: String(ctx["name"] ?? ""),
+            total: typeof ctx["total"] === "number" ? (ctx["total"] as number) : 0,
+            inuse: typeof ctx["inuse"] === "number" ? (ctx["inuse"] as number) : 0,
+            malloced: typeof ctx["malloced"] === "number" ? (ctx["malloced"] as number) : 0,
+        };
+    }).filter((c) => c.name !== "");
+}
+
+function parseZones(json: Record<string, unknown>): ZoneStatsEntry[] {
+    const views = asRecord(json["views"]);
+    const defaultView = asRecord(views["_default"]);
+    const zones = defaultView["zones"];
     if (!Array.isArray(zones)) return [];
 
-    return zones.map((z: unknown) => {
-        const zone = (z as Record<string, unknown>) ?? {};
-        return {
-            name: String(zone["name"] ?? ""),
-            class: String(zone["class"] ?? "IN"),
-            serial: typeof zone["serial"] === "number" ? (zone["serial"] as number) : null,
-            type: String(zone["type"] ?? ""),
-            counters: extractCounters(zone),
-        };
-    });
+    return zones
+        .map((z: unknown) => {
+            const zone = asRecord(z);
+            return {
+                name: String(zone["name"] ?? ""),
+                class: String(zone["class"] ?? "IN"),
+                serial: typeof zone["serial"] === "number" ? (zone["serial"] as number) : null,
+                type: String(zone["type"] ?? ""),
+                rcodes: parseCounterMap(zone["rcodes"]),
+                qtypes: parseCounterMap(zone["qtypes"]),
+            };
+        })
+        .filter((z) => z.name !== "" && z.type === "primary");
 }
 
-function parseTasks(tasksObj: unknown): TaskEntry[] {
-    if (!tasksObj || typeof tasksObj !== "object") return [];
-    const raw = tasksObj as Record<string, unknown>;
-    const tasks = raw["task"];
+function parseTasks(json: Record<string, unknown>): TaskEntry[] {
+    const taskmgr = asRecord(json["taskmgr"]);
+    const tasks = taskmgr["tasks"];
     if (!Array.isArray(tasks)) return [];
 
     return tasks.map((t: unknown) => {
-        const task = (t as Record<string, unknown>) ?? {};
+        const task = asRecord(t);
         return {
-            name: String(task["name"] ?? ""),
-            counters: extractCounters(task),
+            id: String(task["id"] ?? ""),
+            name: String(task["name"] ?? "unnamed"),
+            references: typeof task["references"] === "number" ? (task["references"] as number) : 0,
+            state: String(task["state"] ?? ""),
+            quantum: typeof task["quantum"] === "number" ? (task["quantum"] as number) : 0,
+            events: typeof task["events"] === "number" ? (task["events"] as number) : 0,
         };
     });
 }
 
 function parseBindStatistics(json: Record<string, unknown>): BindStatistics {
-    const ns = (json["ns"] as Record<string, unknown>) ?? {};
-    const nsStats = (ns["stats"] as Record<string, unknown>) ?? {};
+    const nsstats = parseCounterMap(json["nsstats"]);
+    const zonestats = parseCounterMap(json["zonestats"]);
 
     return {
-        server: parseServerStats(nsStats["server"]),
-        memory: parseMemorySummary(nsStats["memory"]),
-        zones: parseZones(nsStats["zones"]),
-        tasks: parseTasks(nsStats["tasks"]),
-        raw: nsStats,
+        serverCounters: nsstats,
+        zoneCounters: zonestats,
+        memory: parseMemory(json),
+        zones: parseZones(json),
+        tasks: parseTasks(json),
+        socketStats: { counters: parseCounterMap(json["sockstats"]) },
+        raw: json,
     };
 }
 
@@ -235,10 +266,9 @@ export async function getStatsBundle(): Promise<StatsBundle> {
 }
 
 /**
- * Look up a specific counter by name from a list of counters.
- * Returns `null` if not found.
+ * Look up a specific counter by name from a CounterMap.
+ * Returns `0` if not found.
  */
-export function findCounter(counters: StatsCounter[], name: string): number | null {
-    const found = counters.find((c) => c.name === name);
-    return found ? found.value : null;
+export function getCounter(counters: CounterMap, name: string): number {
+    return counters[name] ?? 0;
 }
