@@ -32,7 +32,7 @@ options {
         8.8.8.8;
         8.8.4.4;
     };
-    forward only;
+    forward first;
 
     // ── Runtime Zone Management ──────────────────────────────────────
     // Required for `rndc addzone` / `rndc delzone` — the Bind DNS GUI
@@ -51,4 +51,14 @@ options {
     // Collect per-zone query counters so the Bind DNS GUI can display
     // them on the Statistics dashboard.
     zone-statistics full;
+};
+
+logging {
+    channel default_log {
+        stderr;
+        severity info;
+    };
+    category default { default_log; };
+    category dnssec { default_log; };
+    category zoneload { default_log; };
 };
