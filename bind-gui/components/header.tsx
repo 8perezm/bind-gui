@@ -24,6 +24,7 @@ export default function Header() {
                 {session && (
                     <nav className="hidden md:flex items-center gap-8">
                         <NavLink href="/">Zones</NavLink>
+                        <NavLink href="/stats">Stats</NavLink>
                         <NavLink href="/config">Config</NavLink>
                         <Button
                             variant="outline"

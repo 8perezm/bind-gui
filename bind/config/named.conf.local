@@ -17,3 +17,12 @@
 //
 // For the zone file format, see the BIND docs:
 //   https://bind9.readthedocs.io/en/latest/reference.html#zone-file
+
+// ── Statistics Channel ──────────────────────────────────────────────
+// Exposes BIND statistics as JSON on port 8953. The port is NOT
+// published to the host — only containers on the same Docker network
+// (bind-gui) can reach it. No authentication; the Docker network
+// boundary is the security control.
+statistics-channels {
+    inet * port 8953 allow { any; };
+};

@@ -46,4 +46,9 @@ options {
     dnssec-validation no;
 
     auth-nxdomain no;  // Conform to RFC 1035
+
+    // ── Statistics ─────────────────────────────────────────────────────
+    // Collect per-zone query counters so the Bind DNS GUI can display
+    // them on the Statistics dashboard.
+    zone-statistics full;
 };

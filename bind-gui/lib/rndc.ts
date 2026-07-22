@@ -225,3 +225,47 @@ function parseZoneStatus(output: string): ZoneStatus {
         raw,
     };
 }
+
+// ── Server status (rndc status) ─────────────────────────────────────
+
+export interface ServerStatus {
+    version: string;
+    bootTime: string | null;
+    lastReconfigTime: string | null;
+    zoneCount: number | null;
+    zoneMaximum: number | null;
+    recursiveClients: number | null;
+    tcpClients: number | null;
+    /** Raw key-value pairs for any field we don't explicitly parse. */
+    raw: Record<string, string>;
+}
+
+/** Get overall server status using `rndc status`. */
+export async function serverStatus(): Promise<ServerStatus> {
+    const result = await runRndc(["status"]);
+    return parseServerStatus(result.output);
+}
+
+function parseServerStatus(output: string): ServerStatus {
+    const lines = output.split("\n");
+    const raw: Record<string, string> = {};
+    for (const line of lines) {
+        const colonIdx = line.indexOf(":");
+        if (colonIdx !== -1) {
+            const key = line.slice(0, colonIdx).trim();
+            const val = line.slice(colonIdx + 1).trim();
+            raw[key] = val;
+        }
+    }
+
+    return {
+        version: raw["version"] || "",
+        bootTime: raw["boot time"] || null,
+        lastReconfigTime: raw["last reconfig time"] || null,
+        zoneCount: raw["zone count"] ? parseInt(raw["zone count"], 10) : null,
+        zoneMaximum: raw["zone maximum"] ? parseInt(raw["zone maximum"], 10) : null,
+        recursiveClients: raw["recursive clients"] ? parseInt(raw["recursive clients"], 10) : null,
+        tcpClients: raw["tcp clients"] ? parseInt(raw["tcp clients"], 10) : null,
+        raw,
+    };
+}
