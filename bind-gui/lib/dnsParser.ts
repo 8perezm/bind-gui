@@ -16,9 +16,15 @@ export function parseZoneFile(filename: string, content: string): ZoneFile {
     let minimumTtl = 86400;
     const records: DnsRecord[] = [];
 
-    // Parse $TTL
+    // BIND rewrites zone files after `rndc sync` with a different format:
+    // it uses $ORIGIN directives and omits the owner name on lines that
+    // inherit from the previous resource-record line. Track the current
+    // owner so we can reconstruct fully-qualified record lines.
+    let lastKnownOwner: string | null = null;
+
     for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+        const originalLine = lines[i];
+        const line = originalLine.trim();
 
         if (line.startsWith("$TTL")) {
             const match = line.match(/\$TTL\s+(\d+)/i);
@@ -26,18 +32,50 @@ export function parseZoneFile(filename: string, content: string): ZoneFile {
             continue;
         }
 
-        // Skip comments and empty lines
-        if (!line || line.startsWith(";") || line.endsWith("(")) continue;
+        // Skip comments, empty lines, and $ORIGIN directives
+        if (!line || line.startsWith(";") || line.startsWith("$")) continue;
 
-        // SOA record is handled specially - skip it in the loop
-        if (line.includes("SOA")) continue;
-        if (/\)/.test(line.trim()) && !line.includes("Minimum TTL")) continue;
-        // Timing parameters inside SOA block
+        // Detect lines where BIND omitted the owner name (they inherit
+        // from the last explicit owner). These lines begin with whitespace.
+        const hasImplicitOwner =
+            originalLine.length > 0 && /^[ \t]/.test(originalLine);
+
+        // SOA record — extract the owner name before skipping it so
+        // subsequent implicit-owner lines can inherit it.
+        if (line.includes("SOA") && line.toUpperCase().includes("SOA")) {
+            if (!hasImplicitOwner) {
+                const soaParts = line.split(/\s+/);
+                if (soaParts.length > 0 && soaParts[0] !== "IN") {
+                    lastKnownOwner = normalizeOwner(soaParts[0], domain);
+                }
+            }
+            continue;
+        }
+
+        // Closing parenthesis of a multi-line SOA, or timing params inside one
+        if (/\)/.test(line) && !line.includes("Minimum TTL")) continue;
         if (/^\d+\s+;/.test(line)) continue;
 
+        // Reconstruct the effective record line: if BIND omitted the
+        // owner, prepend the last known owner so parseRecordLine sees a
+        // complete three-field line (name type data).
+        const effectiveLine =
+            hasImplicitOwner && lastKnownOwner
+                ? `${lastKnownOwner} ${line}`
+                : line;
+
         // Parse regular records
-        const record = parseRecordLine(line, ttl);
-        if (record) records.push(record);
+        const record = parseRecordLine(effectiveLine, ttl);
+        if (record) {
+            // Normalise FQDNs that match the zone apex back to "@" so
+            // the frontend & diff logic see stable record names.
+            record.name = normalizeOwner(record.name, domain);
+
+            if (!hasImplicitOwner) {
+                lastKnownOwner = record.name;
+            }
+            records.push(record);
+        }
     }
 
     return {
@@ -64,6 +102,19 @@ function extractDomainFromFilename(filename: string): string {
     // db.192.168.5 -> 192.168.5 reverse zone
     if (filename.startsWith("db.")) return filename.replace(/^db\./, "");
     return filename;
+}
+
+/**
+ * Normalise an owner name to `@` when it matches the zone apex.
+ * BIND's `rndc sync` rewrites zone files using the full FQDN (e.g.
+ * `test.com`) instead of `@`, but downstream consumers (frontend,
+ * diff logic) expect `@` for apex records. Strips any trailing dot
+ * before comparing to the domain.
+ */
+function normalizeOwner(owner: string, domain: string): string {
+    const stripped = owner.endsWith(".") ? owner.slice(0, -1) : owner;
+    if (stripped === domain) return "@";
+    return owner;
 }
 
 function parseRecordLine(
