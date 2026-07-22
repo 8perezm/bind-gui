@@ -152,9 +152,12 @@ export async function reloadZone(domain: string): Promise<RndcResult> {
 /**
  * Re-read the configuration file.
  *
- * `reconfig` is non-disruptive: it adds new zones and removes deleted
- * zones, but does NOT re-evaluate modified zone blocks. To pick up a
- * change inside an existing zone block you need `reloadZone(domain)`.
+ * `reconfig` is non-disruptive: it adds new zones, removes deleted
+ * zones, and reloads zones whose block changed. However, for dynamic
+ * zones (those with `allow-update` and a journal) a plain `reconfig`
+ * may skip the reload. After `reconfig`, callers should verify the
+ * zone status and use `reloadZone(domain)` — with freeze/thaw for
+ * dynamic zones — if the expected change hasn't taken effect.
  */
 export async function reconfig(): Promise<RndcResult> {
     return runRndc(["reconfig"]);
@@ -190,13 +193,22 @@ function parseZoneStatus(output: string): ZoneStatus {
         }
     }
 
+    // BIND 9.18's `rndc zonestatus` does NOT output an `inline signing`
+    // field even when inline-signing is configured and active. Instead,
+    // zones with inline-signing always include a `signed serial` line
+    // (which may equal the regular `serial` if no new signatures have
+    // been generated yet). Zones without inline-signing never show
+    // `signed serial`. Detect inline-signing from either field.
+    const hasSignedSerial = raw["signed serial"] !== undefined && raw["signed serial"] !== "";
+    const inlineSigning = raw["inline signing"] === "yes" || hasSignedSerial;
+
     return {
         name: raw["name"] || "",
         type: raw["type"] || "",
         serial: raw["serial"] ? parseInt(raw["serial"], 10) : null,
         dynamic: raw["dynamic"] === "yes",
         journal: raw["journal"] === "yes",
-        inlineSigning: raw["inline signing"] === "yes",
+        inlineSigning,
         keyDirectory: raw["key directory"] || null,
         raw,
     };

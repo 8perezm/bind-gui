@@ -53,13 +53,32 @@ export default function CreateZoneDialog({
         e.preventDefault();
         if (!domain.trim()) return;
 
+        // The primary NS always has the form `PREFIX.domain.` (e.g.
+        // `ns1.example.com.`). Strip the trailing dot and check if
+        // it ends with the zone apex — that means it's an in-bailiwick
+        // NS, and BIND *requires* a matching A/AAAA glue record or it
+        // silently refuses to load the zone.
+        const fullPrimaryNs = `${primaryNs}${domain}.`;
+        const nsLabel = fullPrimaryNs.endsWith(".")
+            ? fullPrimaryNs.slice(0, -1)
+            : fullPrimaryNs;
+        const apex = domain.trim();
+        const isInBailiwick = nsLabel === apex || nsLabel.endsWith(`.${apex}`);
+        if (isInBailiwick && !nameserverIp.trim()) {
+            setError(
+                `The nameserver ${fullPrimaryNs} is in-bailiwick (inside the zone itself). ` +
+                "BIND requires a glue A record for it. Provide a Nameserver IP below.",
+            );
+            return;
+        }
+
         setSaving(true);
         setError(null);
 
         try {
             const body: Record<string, unknown> = {
-                domain: domain.trim(),
-                primaryNs: `${primaryNs}${domain}.`,
+                domain: apex,
+                primaryNs: fullPrimaryNs,
                 adminEmail: `${adminEmail}${domain}.`,
                 ttl: parseInt(ttl, 10),
                 inlineSigning,

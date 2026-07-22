@@ -3,8 +3,7 @@ import { spawn } from "child_process";
 import {
     zoneStatus,
     reconfig,
-    freeze,
-    thaw,
+    delZone,
     RndcError,
 } from "@/lib/rndc";
 import { setInlineSigningInNamedConfLocal } from "@/lib/fileSystem";
@@ -87,17 +86,16 @@ export async function POST(
         );
     }
 
+    // BIND 9.18 re-reads named.conf on `rndc reconfig` but does NOT
+    // reload modified zone blocks for dynamic zones — the `reconfig`
+    // only adds new zones and removes deleted ones.  We therefore need
+    // a two-step: `rndc delzone` removes the zone from the running
+    // config, then `reconfig` re-adds it from named.conf.local (which
+    // now has the new `inline-signing` setting).  This causes a brief
+    // zone absence but reliably picks up the config change.
     try {
-        // `rndc reconfig` re-reads named.conf and reloads any zone whose
-        // block changed. That's all we need — do NOT also call
-        // `rndc reload <zone>` afterwards: BIND refuses `rndc reload`
-        // on a dynamic zone ("dynamic zone") and that spurious failure
-        // would make us undo a change that BIND had already applied.
         await reconfig();
     } catch (err) {
-        // We edited the file but BIND didn't accept the reload. Try to
-        // undo the named.conf.local edit so on-disk state matches
-        // BIND's running state.
         const stderr = err instanceof RndcError ? (err.stderr || err.message) : (err instanceof Error ? err.message : String(err));
         console.error(`rndc reconfig failed after editing named.conf.local for ${domain}:`, err);
 
@@ -111,16 +109,22 @@ export async function POST(
         );
     }
 
-    // Force immediate signing when enabling, so the user doesn't have
-    // to wait for the next resign interval.
-    if (enabled) {
-        try {
-            await freeze(domain);
-            await thaw(domain);
-        } catch {
-            // best-effort — zone may already be up to date, or may not
-            // be dynamic (in which case freeze/thaw is a no-op error).
+    // Remove the zone from the running config so `reconfig` below will
+    // re-add it with the new `inline-signing` setting.  If the zone is
+    // already in the desired state (no-op), skip the delzone dance.
+    try {
+        const preStatus = await zoneStatus(domain);
+        if (preStatus.inlineSigning !== enabled) {
+            await delZone(domain);
+            await reconfig();
         }
+    } catch (reloadErr) {
+        // Non-fatal: named.conf.local already has the change.  The
+        // next BIND restart will pick it up without intervention.
+        console.warn(
+            `delzone/reconfig for ${domain} after DNSSEC toggle failed (non-fatal):`,
+            reloadErr,
+        );
     }
 
     // Re-read status after the change

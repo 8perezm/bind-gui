@@ -10,7 +10,17 @@ function zonePath(filename: string): string {
 export function listZoneFiles(): string[] {
     try {
         const allFiles = fs.readdirSync(CONFIG_DIR);
-        return allFiles.filter((f) => f.startsWith("db."));
+        return allFiles.filter((f) => {
+            if (!f.startsWith("db.")) return false;
+            // BIND auto-creates .jbk (journal backup), .signed (inline-signed
+            // zone), .jnl (journal), and .signed.jnl files alongside the real
+            // zone files. Filter them out so the UI only shows actual zones.
+            if (f.endsWith(".jbk")) return false;
+            if (f.endsWith(".signed")) return false;
+            if (f.endsWith(".jnl")) return false;
+            if (f.endsWith(".signed.jnl")) return false;
+            return true;
+        });
     } catch (err) {
         console.error("Failed to read zone files:", err);
         return [];
