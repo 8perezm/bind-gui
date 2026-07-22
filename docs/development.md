@@ -96,7 +96,7 @@ bind-dns-gui/
 │   └── compose.yaml         # BIND-only Docker Compose
 ├── bind-gui/                # Next.js web application
 │   ├── app/                 # Next.js App Router pages & API routes
-│   │   ├── (protected)/     # Authenticated pages (zone list, editor, config)
+│   │   ├── (protected)/     # Authenticated pages (zone list, editor, config, stats)
 │   │   ├── api/             # API routes (auth, zones, config, version)
 │   │   └── login/           # Login page
 │   ├── components/          # Reusable React components
@@ -107,7 +107,8 @@ bind-dns-gui/
 │   │   ├── fileSystem.ts    # Config file I/O
 │   │   ├── authOptions.ts   # NextAuth configuration
 │   │   ├── restartContainer.ts  # Docker container restart via API (optional)
-│   │   ├── rndc.ts          # rndc addzone/delzone/zonestatus wrapper
+│   │   ├── rndc.ts          # rndc addzone/delzone/zonestatus/serverStatus wrapper
+│   │   ├── stats.ts         # BIND statistics-channels HTTP client & parsers
 │   │   ├── nsupdate.ts      # nsupdate (RFC 2136) transaction wrapper
 │   │   ├── dnsDiff.ts       # Record diff engine for nsupdate operations
 │   │   └── utils.ts         # Shared utilities

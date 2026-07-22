@@ -5,10 +5,10 @@
 Bind DNS GUI is a containerized web application that provides a graphical interface for managing BIND9 DNS zones. It runs alongside a standard BIND9 server and communicates with it over the network using standard protocols — not by editing files directly.
 
 ```
-┌──────────────┐      ┌──────────────────────┐
-│   Browser    │─────▶│  bind-gui (Next.js)   │
-│  :3001       │      │  :3001                │
-└──────────────┘      └──────────┬───────────┘
+┌──────────────┐      ┌──────────────────────────┐
+│   Browser    │─────▶│  bind-gui (Next.js)       │
+│  :3001       │      │  :3001                    │
+└──────────────┘      └──────────┬───────────────┘
                                  │
                     ┌────────────▼────────────┐
                     │  Record edits via        │
@@ -19,12 +19,17 @@ Bind DNS GUI is a containerized web application that provides a graphical interf
                     │  Zone lifecycle via       │
                     │  rndc addzone/delzone     │
                     │  Port 953/TCP             │
+                    │                           │
+                    │  Statistics via HTTP JSON │
+                    │  statistics-channels API  │
+                    │  Port 8953/TCP            │
                     └────────────┬────────────┘
                                  │
                     ┌────────────▼────────────┐
                     │  bind9 (ISC BIND)       │
                     │  :53 (UDP/TCP)          │
                     │  :953 (TCP, controls)   │
+                    │  :8953 (TCP, stats)     │
                     └────────────┬────────────┘
                                  │
                     ┌────────────▼────────────┐
@@ -55,6 +60,7 @@ Bind DNS GUI is a containerized web application that provides a graphical interf
 | **DNS Parsing** | Custom parser in `lib/dnsParser.ts` |
 | **Dynamic Updates** | `nsupdate` (RFC 2136) with TSIG (RFC 2845) via Alpine `bind-tools` |
 | **Zone Lifecycle** | `rndc addzone / delzone / modzone` over TCP/953 |
+| **Statistics** | BIND statistics-channels JSON API (`lib/stats.ts`) over HTTP port 8953 |
 | **Container Management** | Docker Engine API via Unix socket (optional fallback, `lib/restartContainer.ts`) |
 | **Runtime** | Node.js 20 (Alpine Linux container) |
 | **DNS Server** | ISC BIND 9.18 |
@@ -102,6 +108,7 @@ Authentication uses next-auth with a credentials provider. Sessions are managed 
 | `/api/config/files` | `GET` | Yes | List config files (named.conf, etc.) |
 | `/api/version` | `GET` | Yes | Get application version |
 | `/api/auth/[...nextauth]` | `POST` | No | NextAuth authentication endpoints |
+| `/api/stats` | `GET` | Yes | Server statistics bundle: `rndc status` + statistics-channels data |
 
 ## Design System
 

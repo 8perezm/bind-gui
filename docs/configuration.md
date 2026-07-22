@@ -14,6 +14,7 @@ The Bind DNS GUI is configured entirely through environment variables. Create a 
 | `BIND_RNDC_HOST` | No | `bind9` | Hostname of the BIND9 container for rndc connections (port 953) |
 | `BIND_DNS_HOST` | No | `bind9` | Hostname of the BIND9 container for nsupdate connections (port 53/TCP) |
 | `TSIG_KEY_FILE` | No | `/etc/bind/bind-gui.key` | Path to the TSIG key file for nsupdate and rndc authentication |
+| `BIND_STATS_URL` | No | `http://bind9:8953` | URL of BIND's statistics-channels HTTP endpoint |
 
 ### Example `.env`
 
@@ -51,6 +52,32 @@ bind/
 The repo does **not** ship with any pre-existing zone files. `db.<zone>` files
 are created on demand the first time you create a zone in the GUI (or when you
 add a zone manually and write a file into this directory).
+
+### Statistics Channel
+
+The statistics dashboard requires two configuration changes to `named.conf.*`:
+
+**named.conf.local** — Enable the HTTP statistics endpoint (port 8953, Docker-network-scoped only):
+
+```bind
+statistics-channels {
+    inet * port 8953 allow { any; };
+};
+```
+
+Port 8953 is **not published to the host** — only containers on the same Docker network can reach it. The statistics channel has no authentication; the Docker network boundary is the security control.
+
+**named.conf.options** — Enable per-zone query counters inside the `options` block:
+
+```bind
+zone-statistics full;
+```
+
+After editing both files, reload BIND:
+
+```bash
+docker compose exec bind9 rndc reconfig
+```
 
 ### Zone File Format
 

@@ -72,6 +72,10 @@ Set `NEXTAUTH_URL` to the public HTTPS URL of your instance.
 
 In the combined Docker Compose setup, the GUI and BIND9 containers communicate over an isolated Docker network (`dns-net`). Only the necessary ports are exposed to the host.
 
+#### Statistics Channel (Port 8953)
+
+BIND's statistics-channels API is **not published to the host** — the port is only reachable from other containers on the `dns-net` network. This is intentional: the statistics channel has no authentication, so the Docker network boundary is the sole security control.
+
 ### 5. Docker Socket Access
 
 The GUI container historically required the Docker socket to restart BIND after zone file changes. With the migration to nsupdate (RFC 2136) and rndc, the Docker socket is **no longer required** for zone writes. It is retained as an optional fallback for the version display endpoint and custom operations. If removed, all zone management continues to work via TSIG-authenticated DNS transactions.

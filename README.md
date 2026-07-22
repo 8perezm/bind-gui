@@ -34,6 +34,7 @@
 - **🔐 Authentication** — Password-protected access via environment variables. Simple, no database required.
 - **♻️ Dynamic Updates (RFC 2136)** — Record edits go through nsupdate with TSIG authentication — no container restart needed, SOA serial bumps automatically.
 - **🔐 DNSSEC inline-signing** — Toggle per-zone DNSSEC signing with a single switch. BIND manages keys and signs automatically. View CDS/CDNSKEY/DS records to publish at your registrar.
+- **📊 Statistics Dashboard** — Server counters, per-zone query statistics, memory usage, and task manager state — all served via BIND's statistics-channels API.
 - **🎨 Monochrome Design** — Clean, distraction-free black-and-white interface that means business.
 - **🐳 Docker Native** — Ready-to-use Docker image on Docker Hub. Works with your existing BIND9 container.
 
@@ -80,7 +81,7 @@ It rewrites the config and runs `rndc reconfig` so the change takes effect witho
 ```yaml
 services:
   bind9:
-    image: internetsystemsconsortium/bind9:9.18
+    image: internetsystemsconsortium/bind9:9.20
     container_name: bind9
     restart: unless-stopped
     ports:
@@ -164,7 +165,7 @@ Visit [**http://localhost:3001**](http://localhost:3001) and log in with your cr
 
 That's it. You now have a web UI for your DNS server.
 
-### 7. Point your router at it
+### 8. Point your router at it
 
 For your network to actually *use* this DNS server, configure your router's DHCP settings to hand out the IP of the machine running BIND9 as the primary DNS server. Every device on your network will then resolve domains through your own server — giving you full control over DNS records, local hostnames, and ad-blocking if you choose.
 
