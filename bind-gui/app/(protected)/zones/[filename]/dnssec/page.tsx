@@ -15,6 +15,8 @@ interface ZoneStatus {
     journal: boolean;
     inlineSigning: boolean;
     keyDirectory: string | null;
+    keyMaintenance: string | null;
+    nextKeyEvent: string | null;
     raw: Record<string, string>;
 }
 
@@ -204,6 +206,12 @@ export default function DnssecPage() {
                     {status?.keyDirectory && (
                         <DetailBox label="Key Directory" value={status.keyDirectory} />
                     )}
+                    {status?.keyMaintenance && (
+                        <DetailBox label="Key Maintenance" value={status.keyMaintenance} />
+                    )}
+                    {status?.nextKeyEvent && (
+                        <DetailBox label="Next Key Event" value={status.nextKeyEvent} />
+                    )}
                 </div>
             </section>
 
@@ -243,9 +251,24 @@ export default function DnssecPage() {
                             />
                         )}
                         {!ds.cds && !ds.cdnskey && !ds.dsRecord && (
-                            <p className="text-mutedForeground font-mono text-sm">
-                                No DS/CDS/CDNSKEY records found. The zone may not have finished signing yet.
-                            </p>
+                            <div className="text-mutedForeground font-mono text-sm space-y-2">
+                                <p>
+                                    No DS/CDS/CDNSKEY records found. The zone has not finished signing yet.
+                                </p>
+                                {status?.keyMaintenance === "automatic" && status?.nextKeyEvent && (
+                                    <p className="text-amber-800 text-xs space-y-1">
+                                        BIND is configured for automatic key maintenance. Keys are
+                                        scheduled to be generated at{" "}
+                                        <strong>{status.nextKeyEvent}</strong>.
+                                        Once generated, the zone will be signed and DS records will
+                                        appear in the block above — click <strong>Copy</strong> and
+                                        paste it into your registrar&apos;s DNSSEC management section.
+                                        This is a one-time delay; subsequent key events only cover
+                                        rollover. If you don&apos;t want to wait, toggle DNSSEC off
+                                        and back on — this reschedules the event closer to now.
+                                    </p>
+                                )}
+                            </div>
                         )}
                     </div>
                 </section>

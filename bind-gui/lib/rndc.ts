@@ -28,6 +28,10 @@ export interface ZoneStatus {
     journal: boolean;
     inlineSigning: boolean;
     keyDirectory: string | null;
+    /** "automatic" if `auto-dnssec maintain;` is set, "none" otherwise. */
+    keyMaintenance: string | null;
+    /** Human-readable timestamp of the next scheduled key event, e.g. "22-Jul-2026 04:02:05 GMT". */
+    nextKeyEvent: string | null;
     raw: Record<string, string>;
 }
 
@@ -125,6 +129,12 @@ export async function freeze(domain: string): Promise<RndcResult> {
     return runRndc(["freeze", domain]);
 }
 
+/** Sign a zone — generate keys if needed and sign all records (like `rndc sign`). */
+export async function signZone(domain: string): Promise<RndcResult> {
+    validateDomain(domain);
+    return runRndc(["sign", domain]);
+}
+
 /** Thaw (unlock) a dynamic zone so BIND resumes journal writes. */
 export async function thaw(domain: string): Promise<RndcResult> {
     validateDomain(domain);
@@ -210,6 +220,8 @@ function parseZoneStatus(output: string): ZoneStatus {
         journal: raw["journal"] === "yes",
         inlineSigning,
         keyDirectory: raw["key directory"] || null,
+        keyMaintenance: raw["key maintenance"] || null,
+        nextKeyEvent: raw["next key event"] || null,
         raw,
     };
 }

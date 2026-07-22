@@ -282,14 +282,22 @@ function blockWithSurroundingWhitespace(
 }
 
 /**
- * Add or remove `inline-signing yes;` inside the zone block for `domain`
- * in named.conf.local. Returns true on success (or no-op if already in
- * the desired state).
+ * Add or remove `inline-signing yes;` and `auto-dnssec maintain;` inside
+ * the zone block for `domain` in named.conf.local. Returns true on
+ * success (or no-op if already in the desired state).
+ *
+ * BIND 9.18 requires BOTH directives for DNSSEC auto-signing:
+ * - `inline-signing yes;` tells BIND to maintain a signed copy of the zone
+ * - `auto-dnssec maintain;` tells BIND to auto-generate and rotate keys
+ *
+ * Without `auto-dnssec maintain;` the zone block has `inline-signing yes;`
+ * but BIND never generates KSK/ZSK keys, so no RRSIG, DNSKEY, CDS, or
+ * CDNSKEY records are produced and the DNSSEC status page shows
+ * "No DS/CDS/CDNSKEY records found" permanently.
  *
  * This is the safe way to toggle DNSSEC on a static zone — it edits the
  * configuration file and lets the caller `rndc reload <zone>` after, so
- * the running BIND instance is never without the zone in the meantime
- * (the way `rndc delzone + addzone` would be).
+ * the running BIND instance is never without the zone in the meantime.
  */
 export function setInlineSigningInNamedConfLocal(
     domain: string,
@@ -308,12 +316,12 @@ export function setInlineSigningInNamedConfLocal(
     }
 
     let newBody = block.body;
-    // Strip any existing inline-signing directive (covers both `inline-signing yes;` and
-    // `inline-signing no;`, with arbitrary leading whitespace).
+    // Strip any existing inline-signing and auto-dnssec directives.
     newBody = newBody.replace(/[ \t]*inline-signing[ \t]+(yes|no)[ \t]*;?[ \t]*\n?/g, "");
+    newBody = newBody.replace(/[ \t]*auto-dnssec[ \t]+(maintain|off)[ \t]*;?[ \t]*\n?/g, "");
 
     if (enabled) {
-        newBody = newBody.trimEnd() + "\n    inline-signing yes;\n";
+        newBody = newBody.trimEnd() + "\n    inline-signing yes;\n    auto-dnssec maintain;\n";
     }
 
     const newBlock = `${block.open}${newBody}${block.close}`;

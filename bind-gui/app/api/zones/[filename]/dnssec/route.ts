@@ -4,6 +4,7 @@ import {
     zoneStatus,
     reconfig,
     delZone,
+    signZone,
     RndcError,
 } from "@/lib/rndc";
 import { setInlineSigningInNamedConfLocal } from "@/lib/fileSystem";
@@ -125,6 +126,21 @@ export async function POST(
             `delzone/reconfig for ${domain} after DNSSEC toggle failed (non-fatal):`,
             reloadErr,
         );
+    }
+
+    // Best-effort: ask BIND to sign the zone now. With `auto-dnssec
+    // maintain;` this schedules key maintenance at the next interval;
+    // without it, the zone is signed from existing keys immediately.
+    // Either way, it nudges BIND to start the process rather than
+    // waiting for the next scheduled key event.
+    if (enabled) {
+        try {
+            await signZone(domain);
+        } catch (signErr) {
+            // Non-fatal — the zone will still be signed at the next
+            // scheduled key event.
+            console.warn(`rndc sign ${domain} (best-effort):`, signErr);
+        }
     }
 
     // Re-read status after the change
