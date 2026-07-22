@@ -17,7 +17,7 @@
   <a href="docs/configuration.md"><img src="https://img.shields.io/badge/-Configuration-000000?style=flat-square" alt="Configuration"></a>
   <a href="docs/architecture.md"><img src="https://img.shields.io/badge/-Architecture-000000?style=flat-square" alt="Architecture"></a>
   <a href="https://hub.docker.com/r/migsperez/bind-dns-gui"><img src="https://img.shields.io/badge/-Docker%20Hub-000000?style=flat-square" alt="Docker Hub"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/-MIT-000000?style=flat-square" alt="License"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/-AGPL%203.0-000000?style=flat-square" alt="License"></a>
 </p>
 
 <p align="center">
@@ -78,54 +78,7 @@ It rewrites the config and runs `rndc reconfig` so the change takes effect witho
 
 ### 3. Create `compose.yaml`
 
-```yaml
-services:
-  bind9:
-    image: internetsystemsconsortium/bind9:9.20
-    container_name: bind9
-    restart: unless-stopped
-    ports:
-      - "53:53/udp"
-      - "53:53/tcp"
-      - "953:953/tcp"          # rndc control channel
-    volumes:
-      - ./bind/config:/etc/bind:rw    # writable so BIND can create .jnl journal files
-      - bind-cache:/var/cache/bind
-    networks:
-      - dns-net
-
-  bind-gui:
-    image: migsperez/bind-dns-gui:latest
-    container_name: bind9-gui
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    environment:
-      - AUTH_SECRET=${AUTH_SECRET}
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - NEXTAUTH_URL=http://localhost:3001
-      - CONFIG_DIR=/app/bind/config
-      - BIND_RNDC_HOST=bind9
-      - BIND_DNS_HOST=bind9
-      - TSIG_KEY_FILE=/etc/bind/bind-gui.key
-    volumes:
-      - ./bind/config:/app/bind/config:rw
-      - ./bind/config/bind-gui.key:/etc/bind/bind-gui.key:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    depends_on:
-      bind9:
-        condition: service_started
-    networks:
-      - dns-net
-
-networks:
-  dns-net:
-    driver: bridge
-
-volumes:
-  bind-cache:
-```
+Use the [`compose.yaml`](compose.yaml) from this repo as your starting point. It defines both the BIND9 server and the GUI, connected over an isolated Docker network.
 
 ### 4. Configure environment variables
 
@@ -226,4 +179,4 @@ Contributions are welcome! See [Development](docs/development.md) for local setu
 
 ## 📄 License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE)
