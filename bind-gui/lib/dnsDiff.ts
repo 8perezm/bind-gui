@@ -109,14 +109,12 @@ export function diffRecords(
  * - `name.` (trailing dot)    → as-is              (already absolute)
  * - `sub.name` (has dot)      → `sub.name.`        (just dot-terminate)
  * - `www` (no dot)            → `www.{zone}.`      (build FQDN)
- *
- * Wildcard `*` is left as-is — nsupdate treats it as a literal name
- * and BIND recognises it as the wildcard owner when present in the
- * zone (it is, e.g. `*.foo.example.com`).
+ * - `*` (wildcard)            → `*.{zone}.`        (bare `*` is relative to
+ *   the root origin, outside the zone — same NOTZONE trap as `www`)
  */
 function normaliseNameForNsupdate(name: string, zone: string): string {
     if (name === "@") return name;
-    if (name === "*") return name;
+    if (name === "*") return `*.${zone}.`;
     if (name.endsWith(".")) return name;
     if (name.includes(".")) return name + ".";
     return `${name}.${zone}.`;

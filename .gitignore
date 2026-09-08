@@ -12,3 +12,4 @@ node_modules/
 bind/config/bind-gui.key
 
 .playwright-mcp/
+.opencode/
