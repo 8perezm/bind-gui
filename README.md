@@ -16,6 +16,7 @@
   <a href="#-quick-start"><img src="https://img.shields.io/badge/-Quick%20Start-000000?style=flat-square" alt="Quick Start"></a>
   <a href="docs/configuration.md"><img src="https://img.shields.io/badge/-Configuration-000000?style=flat-square" alt="Configuration"></a>
   <a href="docs/architecture.md"><img src="https://img.shields.io/badge/-Architecture-000000?style=flat-square" alt="Architecture"></a>
+  <a href="docs/operations.md"><img src="https://img.shields.io/badge/-Operations-000000?style=flat-square" alt="Operations"></a>
   <a href="https://hub.docker.com/r/migsperez/bind-dns-gui"><img src="https://img.shields.io/badge/-Docker%20Hub-000000?style=flat-square" alt="Docker Hub"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/-AGPL%203.0-000000?style=flat-square" alt="License"></a>
 </p>
@@ -134,6 +135,7 @@ For your network to actually *use* this DNS server, configure your router's DHCP
 | [Architecture](docs/architecture.md) | How it works, tech stack, API routes, design system |
 | [Security](docs/security.md) | Auth, best practices, network isolation |
 | [Development](docs/development.md) | Local setup, project structure, building from source |
+| [Operations](docs/operations.md) | Backups, file ownership, BIND logs, journal files |
 
 ---
 
